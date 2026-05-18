@@ -15,6 +15,7 @@ YAHOO_SPY_DAILY_URL = (
     "https://query1.finance.yahoo.com/v8/finance/chart/SPY"
     "?period1=0&period2={period2}&interval=1d&events=history&includeAdjustedClose=true"
 )
+PUBLIC_DATA_SYMBOL = "SPY"
 
 
 class PublicDataError(ValueError):
@@ -101,5 +102,5 @@ def download_public_data(output_path: str | Path, url: str = STOOQ_SPY_DAILY_URL
     try:
         data = normalize_stooq_csv(download_stooq_csv(url))
     except Exception:
-        data = download_yahoo_chart("SPY")
+        data = download_yahoo_chart(PUBLIC_DATA_SYMBOL)
     return write_public_data(data, output_path)
