@@ -17,6 +17,9 @@ on:
         required: true
         default: configs/survival_github.yaml
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   survival:
     runs-on: ubuntu-latest

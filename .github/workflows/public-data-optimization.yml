@@ -17,6 +17,9 @@ on:
         required: true
         default: configs/github_spy_public.yaml
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   optimize:
     runs-on: ubuntu-latest
