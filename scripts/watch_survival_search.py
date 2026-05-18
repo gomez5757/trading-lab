@@ -154,7 +154,7 @@ def watch_survival_search(
     run = active_runs[0] if active_runs else runs[0]
     run_id = int(run["id"])
     jobs = client.list_jobs(run_id)
-    summary = _read_survival_summary(client, run_id) if _is_success(run) else None
+    summary = _read_survival_summary(client, run_id)
     body = _build_watch_body(
         repo=repo,
         run_url_base=run_url_base,
@@ -169,6 +169,7 @@ def watch_survival_search(
         relaunch_on_terminal_problem
         and not active_runs
         and _is_relaunchable(run)
+        and summary is None
         and not _already_relaunched(issues, run_id)
     ):
         client.dispatch_workflow(workflow, ref=ref)

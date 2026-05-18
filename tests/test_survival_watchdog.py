@@ -124,6 +124,31 @@ def test_watchdog_relaunches_failed_run_once() -> None:
     assert "Relaunched from failed run: 789" in decision.body
 
 
+def test_watchdog_does_not_relaunch_failed_run_with_final_artifact() -> None:
+    client = FakeClient(
+        runs=[{"id": 789, "status": "completed", "conclusion": "failure"}],
+        artifacts=[{"id": 99, "name": "survival-leaderboard"}],
+        artifact_summary={
+            "candidates_evaluated": 5,
+            "accepted": 0,
+            "best": {"candidate_id": "best"},
+        },
+    )
+
+    decision = watch_survival_search(
+        client,
+        workflow="survival-search.yml",
+        repo="owner/repo",
+        run_url_base="https://github.com",
+        ref="main",
+        relaunch_on_terminal_problem=True,
+    )
+
+    assert decision.action == "issue_updated"
+    assert not client.dispatched
+    assert "Candidates evaluated: 5" in decision.body
+
+
 def test_watchdog_does_not_relaunch_same_failed_run_twice() -> None:
     client = FakeClient(
         runs=[{"id": 789, "status": "completed", "conclusion": "failure"}],
