@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import time
+from urllib.parse import quote as url_quote
 from urllib.request import Request
 from urllib.request import urlopen
 
@@ -16,6 +17,29 @@ YAHOO_SPY_DAILY_URL = (
     "?period1=0&period2={period2}&interval=1d&events=history&includeAdjustedClose=true"
 )
 PUBLIC_DATA_SYMBOL = "SPY"
+PUBLIC_FEATURE_SYMBOLS = (
+    "QQQ",
+    "IWM",
+    "TLT",
+    "HYG",
+    "LQD",
+    "GLD",
+    "UUP",
+    "SHY",
+    "IEI",
+    "XLK",
+    "XLF",
+    "XLE",
+    "XLV",
+    "XLY",
+    "XLP",
+    "XLU",
+    "XLI",
+    "XLB",
+    "XLRE",
+    "^VIX",
+)
+FEATURE_WINDOWS = (5, 20, 60)
 
 
 class PublicDataError(ValueError):
@@ -34,7 +58,7 @@ def download_stooq_csv(url: str = STOOQ_SPY_DAILY_URL) -> pd.DataFrame:
 def download_yahoo_chart(symbol: str = "SPY") -> pd.DataFrame:
     url = YAHOO_SPY_DAILY_URL.format(period2=int(time.time()))
     if symbol != "SPY":
-        url = url.replace("/SPY?", f"/{symbol}?")
+        url = url.replace("/SPY?", f"/{url_quote(symbol, safe='')}?")
     request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urlopen(request, timeout=30) as response:
         payload = json.loads(response.read().decode("utf-8"))
@@ -112,3 +136,52 @@ def download_public_data(output_path: str | Path, url: str = STOOQ_SPY_DAILY_URL
     except Exception:
         data = download_yahoo_chart(PUBLIC_DATA_SYMBOL)
     return write_public_data(data, output_path)
+
+
+def download_public_feature_data(output_path: str | Path) -> Path:
+    base = download_yahoo_chart(PUBLIC_DATA_SYMBOL)
+    base_frame = base.copy()
+    base_frame["timestamp_dt"] = pd.to_datetime(base_frame["timestamp"])
+    base_frame = base_frame.set_index("timestamp_dt")
+    base_close = base_frame["close"].astype(float)
+    base_return = base_close.pct_change()
+    feature_columns: dict[str, pd.Series] = {}
+
+    for symbol in PUBLIC_FEATURE_SYMBOLS:
+        try:
+            asset = download_yahoo_chart(symbol)
+        except Exception:
+            continue
+        asset["timestamp_dt"] = pd.to_datetime(asset["timestamp"])
+        asset = asset.set_index("timestamp_dt").reindex(base_frame.index).ffill()
+        prefix = _feature_prefix(symbol)
+        close = asset["close"].astype(float)
+        returns = close.pct_change()
+        feature_columns[f"{prefix}_close_ratio"] = close / base_close
+        feature_columns[f"{prefix}_ret_1"] = returns
+        for window in FEATURE_WINDOWS:
+            feature_columns[f"{prefix}_ret_{window}"] = close.pct_change(window)
+            feature_columns[f"{prefix}_vol_{window}"] = returns.rolling(window).std(ddof=0)
+            feature_columns[f"spy_vs_{prefix}_ret_{window}"] = base_close.pct_change(window) - close.pct_change(window)
+
+    for window in FEATURE_WINDOWS:
+        feature_columns[f"spy_ret_{window}"] = base_close.pct_change(window)
+        feature_columns[f"spy_vol_{window}"] = base_return.rolling(window).std(ddof=0)
+        feature_columns[f"spy_drawdown_{window}"] = base_close / base_close.rolling(window).max() - 1.0
+
+    features = pd.DataFrame(feature_columns, index=base_frame.index)
+    panel = pd.concat([base_frame.drop(columns=["timestamp"]), features], axis=1).reset_index(drop=True)
+    panel.insert(0, "timestamp", pd.to_datetime(base["timestamp"]).dt.strftime("%Y-%m-%d"))
+    panel = panel.replace([float("inf"), float("-inf")], pd.NA).reset_index(drop=True)
+    if panel.empty:
+        raise PublicDataError("public feature panel is empty")
+    return write_public_data(panel, output_path)
+
+
+def _feature_prefix(symbol: str) -> str:
+    return (
+        symbol.lower()
+        .replace("^", "")
+        .replace("-", "_")
+        .replace(".", "_")
+    )

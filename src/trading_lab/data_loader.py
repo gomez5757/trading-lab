@@ -40,7 +40,7 @@ def normalize_market_data(raw: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise DataValidationError(f"Missing required columns: {', '.join(missing)}")
 
-    data = raw.loc[:, REQUIRED_COLUMNS].copy()
+    data = raw.copy()
     data["timestamp"] = pd.to_datetime(data["timestamp"], utc=False, errors="coerce")
     if data["timestamp"].isna().any():
         raise DataValidationError("Invalid timestamps found")
@@ -60,6 +60,11 @@ def normalize_market_data(raw: pd.DataFrame) -> pd.DataFrame:
     if (data["volume"] < 0).any():
         raise DataValidationError("Volume cannot be negative")
 
+    extra_columns = [column for column in data.columns if column not in REQUIRED_COLUMNS]
+    for column in extra_columns:
+        data[column] = pd.to_numeric(data[column], errors="coerce")
+
     data = data.sort_values("timestamp").set_index("timestamp")
     data.index.name = "timestamp"
-    return data.loc[:, PRICE_COLUMNS]
+    ordered_columns = [*PRICE_COLUMNS, *extra_columns]
+    return data.loc[:, ordered_columns]

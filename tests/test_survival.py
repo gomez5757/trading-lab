@@ -7,6 +7,8 @@ from trading_lab.survival import (
     SurvivalCriteria,
     build_survival_grid,
     evaluate_survival_candidate,
+    expand_feature_parameter_space,
+    public_feature_columns,
     split_train_validation,
     survival_score,
 )
@@ -162,6 +164,38 @@ def test_evaluate_survival_candidate_supports_linear_score_rule() -> None:
     )
 
     assert row["feature_count"] == 4
+    assert row["locked_opened"] is False
+
+
+def test_expand_feature_parameter_space_uses_all_public_feature_columns() -> None:
+    data = sample_daily_data()
+    data["qqq_ret_20"] = 0.01
+    data["hyg_ret_20"] = -0.01
+    parameter_space = {
+        "rule": ["feature_threshold"],
+        "feature_name": ["__ALL_PUBLIC_FEATURES__"],
+        "feature_threshold": [0.0],
+    }
+
+    expanded = expand_feature_parameter_space(parameter_space, data)
+
+    assert expanded["feature_name"] == ["qqq_ret_20", "hyg_ret_20"]
+    assert public_feature_columns(data) == ["qqq_ret_20", "hyg_ret_20"]
+
+
+def test_evaluate_survival_candidate_supports_feature_rules() -> None:
+    data = sample_daily_data()
+    data["qqq_ret_20"] = data["close"].pct_change(20).fillna(0.0)
+
+    row = evaluate_survival_candidate(
+        data,
+        {"rule": "feature_threshold", "feature_name": "qqq_ret_20", "feature_threshold": 0.0},
+        initial_cash=10_000,
+        commission_bps=0,
+        slippage_bps=0,
+    )
+
+    assert row["feature_count"] == 1
     assert row["locked_opened"] is False
 
 

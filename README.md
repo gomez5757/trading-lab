@@ -39,6 +39,15 @@ El archivo clave de cada run es `summary.json`:
 Los datos de mercado se descargan dentro de GitHub Actions en cada run. No se suben datos privados al repo. La descarga intenta Stooq primero y usa Yahoo Finance como respaldo publico si Stooq pide apikey.
 Cuando usa Yahoo, los precios de SPY se ajustan por dividendos para que el historico largo no quede castigado artificialmente.
 
+`Survival Search` usa un panel publico multi-activo. Ademas de SPY, descarga y convierte en features:
+
+```text
+QQQ, IWM, TLT, HYG, LQD, GLD, UUP, SHY, IEI,
+XLK, XLF, XLE, XLV, XLY, XLP, XLU, XLI, XLB, XLRE, VIX
+```
+
+Con eso prueba features de momentum, volatilidad, fuerza relativa, defensivos/ciclicos, credito, bonos, oro, dolar y volatilidad. No usa features privadas de Aurora porque el repo es publico.
+
 ## Formato de datos
 
 El CSV debe contener:

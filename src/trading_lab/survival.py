@@ -139,6 +139,8 @@ def _rule_parameter_names(rule: str, parameter_space: dict[str, list[Any]]) -> l
         "breakout": ["breakout_window", "exit_window"],
         "volatility_momentum": ["momentum_window", "volatility_window", "volatility_quantile"],
         "linear_score": ["fast_return_window", "slow_return_window", "risk_window", "score_threshold"],
+        "feature_threshold": ["feature_name", "feature_threshold"],
+        "feature_zscore": ["feature_name", "feature_z_window", "feature_z_threshold"],
     }[rule]
     return [name for name in rule_names if name in parameter_space]
 
@@ -284,6 +286,19 @@ def _signals_for_rule(data: pd.DataFrame, params: dict[str, Any]) -> pd.Series:
             risk_window=int(params["risk_window"]),
             score_threshold=float(params["score_threshold"]),
         )
+    if rule == "feature_threshold":
+        return _feature_threshold_signals(
+            data,
+            feature_name=str(params["feature_name"]),
+            threshold=float(params["feature_threshold"]),
+        )
+    if rule == "feature_zscore":
+        return _feature_zscore_signals(
+            data,
+            feature_name=str(params["feature_name"]),
+            window=int(params["feature_z_window"]),
+            threshold=float(params["feature_z_threshold"]),
+        )
     raise ValueError(f"unsupported survival rule: {rule}")
 
 
@@ -409,6 +424,31 @@ def _linear_score_signals(
     return signal
 
 
+def _feature_threshold_signals(
+    data: pd.DataFrame,
+    *,
+    feature_name: str,
+    threshold: float,
+) -> pd.Series:
+    feature = data[feature_name].astype(float)
+    signal = (feature > threshold).astype(int)
+    signal[feature.isna()] = 0
+    return signal
+
+
+def _feature_zscore_signals(
+    data: pd.DataFrame,
+    *,
+    feature_name: str,
+    window: int,
+    threshold: float,
+) -> pd.Series:
+    zscore = _rolling_zscore(data[feature_name].astype(float), window)
+    signal = (zscore > threshold).astype(int)
+    signal[zscore.isna()] = 0
+    return signal
+
+
 def _rolling_zscore(series: pd.Series, window: int) -> pd.Series:
     mean = series.rolling(window, min_periods=max(20, window // 4)).mean()
     std = series.rolling(window, min_periods=max(20, window // 4)).std(ddof=0)
@@ -529,6 +569,8 @@ def _feature_count(params: dict[str, Any]) -> int:
         "breakout": 2,
         "volatility_momentum": 2,
         "linear_score": 4,
+        "feature_threshold": 1,
+        "feature_zscore": 1,
     }
     return rule_feature_count.get(str(params.get("rule")), 1)
 
@@ -544,4 +586,28 @@ def _valid_candidate(params: dict[str, Any]) -> bool:
         return int(params["exit_window"]) <= int(params["breakout_window"])
     if params.get("rule") == "linear_score":
         return int(params["fast_return_window"]) < int(params["slow_return_window"])
+    if params.get("rule") in {"feature_threshold", "feature_zscore"}:
+        return bool(params.get("feature_name"))
     return True
+
+
+def expand_feature_parameter_space(
+    parameter_space: dict[str, list[Any]],
+    data: pd.DataFrame,
+) -> dict[str, list[Any]]:
+    expanded = {key: list(value) for key, value in parameter_space.items()}
+    if expanded.get("feature_name") == ["__ALL_PUBLIC_FEATURES__"]:
+        expanded["feature_name"] = public_feature_columns(data)
+    return expanded
+
+
+def public_feature_columns(data: pd.DataFrame) -> list[str]:
+    base_columns = {"open", "high", "low", "close", "volume"}
+    columns = [
+        column
+        for column in data.columns
+        if column not in base_columns and pd.api.types.is_numeric_dtype(data[column])
+    ]
+    if not columns:
+        raise ValueError("no public feature columns found")
+    return columns

@@ -5,6 +5,7 @@ import pytest
 
 from trading_lab.public_data import (
     PublicDataError,
+    download_public_feature_data,
     download_stooq_csv,
     download_yahoo_chart,
     normalize_stooq_csv,
@@ -121,3 +122,30 @@ def test_write_public_data_creates_parent_and_csv(tmp_path: Path) -> None:
     assert path.exists()
     written = pd.read_csv(path)
     assert written["timestamp"].tolist() == ["2020-01-02"]
+
+
+def test_download_public_feature_data_writes_cross_asset_features(monkeypatch, tmp_path: Path) -> None:
+    dates = pd.date_range("2020-01-01", periods=320, freq="B")
+
+    def fake_download(symbol: str = "SPY") -> pd.DataFrame:
+        offset = 0 if symbol == "SPY" else 10
+        close = [100 + offset + index for index in range(len(dates))]
+        return pd.DataFrame(
+            {
+                "timestamp": dates.strftime("%Y-%m-%d"),
+                "open": close,
+                "high": [price + 1 for price in close],
+                "low": [price - 1 for price in close],
+                "close": close,
+                "volume": [1000] * len(dates),
+            }
+        )
+
+    monkeypatch.setattr("trading_lab.public_data.download_yahoo_chart", fake_download)
+    monkeypatch.setattr("trading_lab.public_data.PUBLIC_FEATURE_SYMBOLS", ("QQQ",))
+
+    path = download_public_feature_data(tmp_path / "spy_features.csv")
+
+    written = pd.read_csv(path)
+    assert "qqq_ret_20" in written.columns
+    assert "spy_vs_qqq_ret_60" in written.columns

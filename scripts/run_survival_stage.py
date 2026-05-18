@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from trading_lab.config import load_optimization_config
 from trading_lab.data_loader import load_market_data
-from trading_lab.survival import build_survival_grid, evaluate_survival_candidate
+from trading_lab.survival import build_survival_grid, evaluate_survival_candidate, expand_feature_parameter_space
 
 
 def main() -> int:
@@ -25,7 +25,8 @@ def main() -> int:
     config = load_optimization_config(args.config)
     total_stages = args.total_stages or config.total_stages
     data = load_market_data(config.data_path)
-    grid = build_survival_grid(config.parameter_space, stage=args.stage, total_stages=total_stages)
+    parameter_space = expand_feature_parameter_space(config.parameter_space, data)
+    grid = build_survival_grid(parameter_space, stage=args.stage, total_stages=total_stages)
     rows = [
         evaluate_survival_candidate(
             data,
