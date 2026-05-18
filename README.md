@@ -17,8 +17,8 @@ python scripts/merge_leaderboards.py --input-glob "outputs/optimization/stage_*.
 - `ci.yml`: ejecuta tests en push y pull request.
 - `backtest-manual.yml`: lanza un backtest manual desde Actions.
 - `optimization-staged.yml`: divide la optimizacion en 16 jobs y une el leaderboard final.
-- `public-data-optimization.yml`: descarga SPY diario publico y ejecuta la optimizacion en 16 jobs.
-- `survival-search.yml`: descarga SPY diario publico y ejecuta una busqueda survival en 64 jobs.
+- `public-data-optimization.yml`: descarga SPY diario publico con panel amplio de features y ejecuta la optimizacion en 16 jobs.
+- `survival-search.yml`: descarga una vez el panel amplio de features y ejecuta una busqueda survival en 64 jobs.
 
 ## Runs en GitHub sin usar tu PC
 
@@ -39,14 +39,17 @@ El archivo clave de cada run es `summary.json`:
 Los datos de mercado se descargan dentro de GitHub Actions en cada run. No se suben datos privados al repo. La descarga intenta Stooq primero y usa Yahoo Finance como respaldo publico si Stooq pide apikey.
 Cuando usa Yahoo, los precios de SPY se ajustan por dividendos para que el historico largo no quede castigado artificialmente.
 
-`Survival Search` usa un panel publico multi-activo. Ademas de SPY, descarga y convierte en features:
+`Survival Search` usa el panel amplio estilo Aurora. Descarga datos publicos y los convierte en features:
 
 ```text
-QQQ, IWM, TLT, HYG, LQD, GLD, UUP, SHY, IEI,
-XLK, XLF, XLE, XLV, XLY, XLP, XLU, XLI, XLB, XLRE, VIX
+SPY estructura diaria, calendario, QQQ, IWM, RSP, DIA, EFA, EEM,
+EWJ, EWG, EWU, FXI, TLT, IEF, HYG, LQD, GLD, SLV, USO, CPER,
+DBC, UUP, SHY, IEI, sectores SPDR, VIX, VIX3M, VVIX, SKEW,
+TNX, IRX, FVX, TYX, CBOE put/call, EPU y FRED cuando responde.
 ```
 
-Con eso prueba features de momentum, volatilidad, fuerza relativa, defensivos/ciclicos, credito, bonos, oro, dolar y volatilidad. No usa features privadas de Aurora porque el repo es publico.
+Con eso prueba momentum, volatilidad, fuerza relativa, defensivos/ciclicos, credito, bonos, materias primas, dolar, curva de tipos, opciones/sentimiento, calendario y estructura de vela diaria.
+El repo sube la logica reproducible de features, no credenciales, `.env`, caches locales, outputs ni datos locked.
 
 ## Formato de datos
 

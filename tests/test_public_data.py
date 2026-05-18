@@ -143,9 +143,14 @@ def test_download_public_feature_data_writes_cross_asset_features(monkeypatch, t
 
     monkeypatch.setattr("trading_lab.public_data.download_yahoo_chart", fake_download)
     monkeypatch.setattr("trading_lab.public_data.PUBLIC_FEATURE_SYMBOLS", ("QQQ",))
+    monkeypatch.setattr("trading_lab.public_data.FRED_FEATURE_SERIES", {})
+    monkeypatch.setattr("trading_lab.public_data.CBOE_PUT_CALL_URLS", {})
+    monkeypatch.setattr("trading_lab.public_data.EPU_URL", "")
 
     path = download_public_feature_data(tmp_path / "spy_features.csv")
 
     written = pd.read_csv(path)
     assert "qqq_ret_20" in written.columns
     assert "spy_vs_qqq_ret_60" in written.columns
+    assert "calendar_turn_of_month" in written.columns
+    assert "gap_overnight" in written.columns
