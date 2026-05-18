@@ -6,6 +6,7 @@ from trading_lab.results import merge_leaderboards
 from trading_lab.survival import (
     SurvivalCriteria,
     build_survival_grid,
+    encode_feature_spec,
     evaluate_survival_candidate,
     expand_feature_parameter_space,
     public_feature_columns,
@@ -196,6 +197,52 @@ def test_evaluate_survival_candidate_supports_feature_rules() -> None:
     )
 
     assert row["feature_count"] == 1
+    assert row["locked_opened"] is False
+
+
+def test_evaluate_survival_candidate_supports_feature_vote_combo() -> None:
+    data = sample_daily_data()
+    data["lqd_ret_63"] = data["close"].pct_change(63).fillna(0.0)
+    data["spy_vs_tnx_ret_63"] = data["close"].pct_change(63).fillna(0.0)
+    specs = ";".join(
+        [
+            encode_feature_spec(name="lqd_ret_63", kind="threshold", value=0.0),
+            encode_feature_spec(name="spy_vs_tnx_ret_63", kind="threshold", value=0.0),
+        ]
+    )
+
+    row = evaluate_survival_candidate(
+        data,
+        {"rule": "feature_vote", "feature_specs": specs, "min_votes": 2},
+        initial_cash=10_000,
+        commission_bps=0,
+        slippage_bps=0,
+    )
+
+    assert row["feature_count"] == 2
+    assert row["locked_opened"] is False
+
+
+def test_evaluate_survival_candidate_supports_feature_score_combo() -> None:
+    data = sample_daily_data()
+    data["lqd_ret_63"] = data["close"].pct_change(63).fillna(0.0)
+    data["spy_vs_tnx_ret_63"] = data["close"].pct_change(63).fillna(0.0)
+    specs = ";".join(
+        [
+            encode_feature_spec(name="lqd_ret_63", kind="zscore", value=0.0, window=60),
+            encode_feature_spec(name="spy_vs_tnx_ret_63", kind="zscore", value=0.0, window=60),
+        ]
+    )
+
+    row = evaluate_survival_candidate(
+        data,
+        {"rule": "feature_score", "feature_specs": specs, "score_threshold": 0.0},
+        initial_cash=10_000,
+        commission_bps=0,
+        slippage_bps=0,
+    )
+
+    assert row["feature_count"] == 2
     assert row["locked_opened"] is False
 
 

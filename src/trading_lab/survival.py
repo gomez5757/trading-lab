@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from itertools import product
 from math import sqrt
@@ -299,6 +300,18 @@ def _signals_for_rule(data: pd.DataFrame, params: dict[str, Any]) -> pd.Series:
             window=int(params["feature_z_window"]),
             threshold=float(params["feature_z_threshold"]),
         )
+    if rule == "feature_vote":
+        return _feature_vote_signals(
+            data,
+            specs=str(params["feature_specs"]),
+            min_votes=int(params["min_votes"]),
+        )
+    if rule == "feature_score":
+        return _feature_score_signals(
+            data,
+            specs=str(params["feature_specs"]),
+            score_threshold=float(params["score_threshold"]),
+        )
     raise ValueError(f"unsupported survival rule: {rule}")
 
 
@@ -449,6 +462,86 @@ def _feature_zscore_signals(
     return signal
 
 
+def _feature_vote_signals(
+    data: pd.DataFrame,
+    *,
+    specs: str,
+    min_votes: int,
+) -> pd.Series:
+    votes = []
+    for spec in _decode_feature_specs(specs):
+        feature = data[spec["name"]].astype(float)
+        direction = int(spec["direction"])
+        if spec["kind"] == "threshold":
+            threshold = float(spec["value"])
+            vote = feature > threshold if direction >= 0 else feature < threshold
+        elif spec["kind"] == "zscore":
+            zscore = _rolling_zscore(feature, int(spec["window"]))
+            threshold = float(spec["value"])
+            vote = zscore > threshold if direction >= 0 else zscore < threshold
+        else:
+            raise ValueError(f"unsupported feature spec kind: {spec['kind']}")
+        votes.append(vote.fillna(False).astype(int))
+    if not votes:
+        return pd.Series(0, index=data.index, dtype=int)
+    vote_count = sum(votes)
+    return (vote_count >= min_votes).astype(int)
+
+
+def _feature_score_signals(
+    data: pd.DataFrame,
+    *,
+    specs: str,
+    score_threshold: float,
+) -> pd.Series:
+    scores = []
+    for spec in _decode_feature_specs(specs):
+        feature = data[spec["name"]].astype(float)
+        window = int(spec["window"]) if int(spec["window"]) > 0 else 252
+        direction = int(spec["direction"])
+        scores.append(direction * _rolling_zscore(feature, window))
+    if not scores:
+        return pd.Series(0, index=data.index, dtype=int)
+    score = sum(scores) / sqrt(len(scores))
+    signal = (score > score_threshold).astype(int)
+    signal[score.isna()] = 0
+    return signal
+
+
+def encode_feature_spec(
+    *,
+    name: str,
+    kind: str,
+    value: float,
+    window: int = 0,
+    direction: int = 1,
+) -> str:
+    safe_name = name.replace("|", "_")
+    safe_kind = kind.replace("|", "_")
+    return f"{safe_name}|{safe_kind}|{float(value):.8g}|{int(window)}|{int(direction)}"
+
+
+def _decode_feature_specs(specs: str) -> list[dict[str, Any]]:
+    decoded = []
+    for raw_spec in specs.split(";"):
+        if not raw_spec:
+            continue
+        parts = raw_spec.split("|")
+        if len(parts) != 5:
+            raise ValueError(f"invalid feature spec: {raw_spec}")
+        name, kind, value, window, direction = parts
+        decoded.append(
+            {
+                "name": name,
+                "kind": kind,
+                "value": float(value),
+                "window": int(float(window)),
+                "direction": int(float(direction)),
+            }
+        )
+    return decoded
+
+
 def _rolling_zscore(series: pd.Series, window: int) -> pd.Series:
     mean = series.rolling(window, min_periods=max(20, window // 4)).mean()
     std = series.rolling(window, min_periods=max(20, window // 4)).std(ddof=0)
@@ -557,7 +650,11 @@ def _trades_from_position(
 
 def _candidate_id(params: dict[str, Any]) -> str:
     clean = "_".join(f"{key}-{value}" for key, value in sorted(params.items()))
-    return clean.replace(".", "p").replace("-", "_")
+    clean = clean.replace(".", "p").replace("-", "_").replace("|", "_").replace(";", "_")
+    if len(clean) <= 180:
+        return clean
+    digest = hashlib.sha1(clean.encode("utf-8")).hexdigest()[:16]
+    return f"{params.get('rule', 'candidate')}_{digest}"
 
 
 def _feature_count(params: dict[str, Any]) -> int:
@@ -571,6 +668,8 @@ def _feature_count(params: dict[str, Any]) -> int:
         "linear_score": 4,
         "feature_threshold": 1,
         "feature_zscore": 1,
+        "feature_vote": len(_decode_feature_specs(str(params.get("feature_specs", "")))),
+        "feature_score": len(_decode_feature_specs(str(params.get("feature_specs", "")))),
     }
     return rule_feature_count.get(str(params.get("rule")), 1)
 
@@ -588,6 +687,10 @@ def _valid_candidate(params: dict[str, Any]) -> bool:
         return int(params["fast_return_window"]) < int(params["slow_return_window"])
     if params.get("rule") in {"feature_threshold", "feature_zscore"}:
         return bool(params.get("feature_name"))
+    if params.get("rule") == "feature_vote":
+        return bool(params.get("feature_specs")) and int(params.get("min_votes", 0)) >= 1
+    if params.get("rule") == "feature_score":
+        return bool(params.get("feature_specs"))
     return True
 
 

@@ -1,12 +1,26 @@
-name: Survival Search
+name: Survival Search Phase 2 Combo
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/survival-phase2-combo.yml"
+      - "configs/survival_phase2_github.yaml"
+      - "configs/survival_phase2_seeds.json"
+      - "scripts/download_public_data.py"
+      - "scripts/run_survival_combo_stage.py"
+      - "scripts/merge_survival_leaderboards.py"
+      - "src/**"
   workflow_dispatch:
     inputs:
       config:
         description: Config file
         required: true
-        default: configs/survival_github.yaml
+        default: configs/survival_phase2_github.yaml
+      seeds:
+        description: Seed file
+        required: true
+        default: configs/survival_phase2_seeds.json
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -33,10 +47,10 @@ jobs:
       - name: Upload feature panel
         uses: actions/upload-artifact@v4
         with:
-          name: spy-daily-feature-panel
+          name: spy-daily-feature-panel-phase2
           path: data/public/spy_daily.csv
 
-  survival:
+  survival-combo:
     runs-on: ubuntu-latest
     needs: data
     timeout-minutes: 330
@@ -55,19 +69,19 @@ jobs:
       - name: Download feature panel
         uses: actions/download-artifact@v4
         with:
-          name: spy-daily-feature-panel
+          name: spy-daily-feature-panel-phase2
           path: data/public
-      - name: Run survival stage
-        run: python scripts/run_survival_stage.py --config "${{ github.event.inputs.config || 'configs/survival_github.yaml' }}" --stage "${{ matrix.stage }}" --total-stages 64
+      - name: Run phase-2 survival combo stage
+        run: python scripts/run_survival_combo_stage.py --config "${{ github.event.inputs.config || 'configs/survival_phase2_github.yaml' }}" --seeds "${{ github.event.inputs.seeds || 'configs/survival_phase2_seeds.json' }}" --stage "${{ matrix.stage }}" --total-stages 64
       - name: Upload stage
         uses: actions/upload-artifact@v4
         with:
-          name: survival-stage-${{ matrix.stage }}
-          path: outputs/survival/survival_stage_${{ matrix.stage }}.csv
+          name: survival-combo-stage-${{ matrix.stage }}
+          path: outputs/survival_phase2/survival_combo_stage_${{ matrix.stage }}.csv
 
   merge:
     runs-on: ubuntu-latest
-    needs: survival
+    needs: survival-combo
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -80,33 +94,33 @@ jobs:
       - name: Download stages
         uses: actions/download-artifact@v4
         with:
-          path: outputs/survival
-          pattern: survival-stage-*
+          path: outputs/survival_phase2
+          pattern: survival-combo-stage-*
           merge-multiple: true
-      - name: Merge survival leaderboards
-        run: python scripts/merge_survival_leaderboards.py --input-glob "outputs/survival/survival_stage_*.csv"
+      - name: Merge phase-2 survival leaderboards
+        run: python scripts/merge_survival_leaderboards.py --input-glob "outputs/survival_phase2/survival_combo_stage_*.csv" --output outputs/survival_phase2/survival_leaderboard.csv --summary outputs/survival_phase2/survival_summary.json --candidates outputs/survival_phase2/survival_candidates.jsonl --rejected outputs/survival_phase2/rejected_candidates.jsonl
       - name: Validate final leaderboard
-        run: python scripts/validate_results.py outputs/survival/survival_leaderboard.csv outputs/survival/survival_summary.json
+        run: python scripts/validate_results.py outputs/survival_phase2/survival_leaderboard.csv outputs/survival_phase2/survival_summary.json
       - name: Upload final leaderboard
         uses: actions/upload-artifact@v4
         with:
-          name: survival-leaderboard
+          name: survival-phase2-leaderboard
           path: |
-            outputs/survival/survival_leaderboard.csv
-            outputs/survival/survival_summary.json
-            outputs/survival/survival_candidates.jsonl
-            outputs/survival/rejected_candidates.jsonl
+            outputs/survival_phase2/survival_leaderboard.csv
+            outputs/survival_phase2/survival_summary.json
+            outputs/survival_phase2/survival_candidates.jsonl
+            outputs/survival_phase2/rejected_candidates.jsonl
       - name: Publish final issue summary
         continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require("fs");
-            const summary = JSON.parse(fs.readFileSync("outputs/survival/survival_summary.json", "utf8"));
+            const summary = JSON.parse(fs.readFileSync("outputs/survival_phase2/survival_summary.json", "utf8"));
             const best = summary.best || {};
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = [
-              "# Survival Search latest result",
+              "# Survival Phase 2 latest result",
               "",
               `Run: ${runUrl}`,
               `Commit: ${context.sha}`,
@@ -118,16 +132,15 @@ jobs:
               "",
               `ID: ${best.candidate_id ?? "none"}`,
               `Rule: ${best.rule ?? "none"}`,
-              `Feature: ${best.feature_name ?? "n/a"}`,
               `Train Calmar: ${best.train_calmar ?? "n/a"}`,
               `Validation Calmar: ${best.validation_calmar ?? "n/a"}`,
               `Robust passes: ${best.robust_passes ?? "n/a"} / ${best.robust_total ?? "n/a"}`,
               `Accepted: ${best.accepted ?? false}`,
               `Rejection reason: ${best.rejection_reason ?? "none"}`,
               "",
-              "Artifacts: download `survival-leaderboard` from this run."
+              "Artifacts: download `survival-phase2-leaderboard` from this run."
             ].join("\n");
-            const title = "Survival Search latest result";
+            const title = "Survival Phase 2 latest result";
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,

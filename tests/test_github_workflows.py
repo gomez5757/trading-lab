@@ -14,6 +14,7 @@ def test_survival_search_workflow_is_manual_and_never_mentions_locked_output() -
     text = Path(".github/workflows/survival-search.yml").read_text(encoding="utf-8")
 
     assert "workflow_dispatch" in text
+    assert "push:" not in text
     assert "scripts/run_survival_stage.py" in text
     assert "locked" not in text.lower()
     assert "--feature-panel" in text
@@ -21,6 +22,18 @@ def test_survival_search_workflow_is_manual_and_never_mentions_locked_output() -
     assert "--total-stages 64" in text
     assert "actions/github-script" in text
     assert "Survival Search latest result" in text
+
+
+def test_survival_phase2_workflow_runs_combo_search_and_uploads_artifact() -> None:
+    text = Path(".github/workflows/survival-phase2-combo.yml").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch" in text
+    assert "scripts/run_survival_combo_stage.py" in text
+    assert "configs/survival_phase2_seeds.json" in text
+    assert "survival-phase2-leaderboard" in text
+    assert "--total-stages 64" in text
+    assert "actions/github-script" in text
+    assert "Survival Phase 2 latest result" in text
 
 
 def test_survival_watchdog_runs_on_schedule_and_can_relaunch() -> None:
