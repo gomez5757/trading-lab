@@ -47,6 +47,7 @@ def download_yahoo_chart(symbol: str = "SPY") -> pd.DataFrame:
     data = result[0]
     timestamps = data.get("timestamp") or []
     quote = (data.get("indicators", {}).get("quote") or [{}])[0]
+    adjclose = (data.get("indicators", {}).get("adjclose") or [{}])[0].get("adjclose")
     raw = pd.DataFrame(
         {
             "timestamp": pd.to_datetime(timestamps, unit="s").strftime("%Y-%m-%d"),
@@ -54,11 +55,18 @@ def download_yahoo_chart(symbol: str = "SPY") -> pd.DataFrame:
             "high": quote.get("high"),
             "low": quote.get("low"),
             "close": quote.get("close"),
+            "adjclose": adjclose,
             "volume": quote.get("volume"),
         }
     ).dropna()
     if raw.empty:
         raise PublicDataError("Yahoo chart returned an empty CSV")
+    adjustment = raw["adjclose"] / raw["close"]
+    raw["open"] = raw["open"] * adjustment
+    raw["high"] = raw["high"] * adjustment
+    raw["low"] = raw["low"] * adjustment
+    raw["close"] = raw["adjclose"]
+    raw = raw.drop(columns=["adjclose"])
     checked = normalize_market_data(raw)
     return checked.reset_index().assign(
         timestamp=lambda frame: frame["timestamp"].dt.strftime("%Y-%m-%d")

@@ -3,7 +3,13 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from trading_lab.public_data import PublicDataError, download_stooq_csv, normalize_stooq_csv, write_public_data
+from trading_lab.public_data import (
+    PublicDataError,
+    download_stooq_csv,
+    download_yahoo_chart,
+    normalize_stooq_csv,
+    write_public_data,
+)
 
 
 def test_normalize_stooq_csv_writes_expected_ohlcv_columns() -> None:
@@ -47,6 +53,52 @@ def test_download_stooq_csv_rejects_apikey_page(monkeypatch) -> None:
 
     with pytest.raises(PublicDataError, match="Stooq"):
         download_stooq_csv()
+
+
+def test_download_yahoo_chart_uses_adjusted_close(monkeypatch) -> None:
+    payload = {
+        "chart": {
+            "error": None,
+            "result": [
+                {
+                    "timestamp": [1577923200],
+                    "indicators": {
+                        "quote": [
+                            {
+                                "open": [100.0],
+                                "high": [110.0],
+                                "low": [90.0],
+                                "close": [100.0],
+                                "volume": [12345],
+                            }
+                        ],
+                        "adjclose": [{"adjclose": [50.0]}],
+                    },
+                }
+            ],
+        }
+    }
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self) -> bytes:
+            import json
+
+            return json.dumps(payload).encode("utf-8")
+
+    monkeypatch.setattr("trading_lab.public_data.urlopen", lambda *_args, **_kwargs: FakeResponse())
+
+    data = download_yahoo_chart("SPY")
+
+    assert data.loc[0, "close"] == 50.0
+    assert data.loc[0, "open"] == 50.0
+    assert data.loc[0, "high"] == 55.0
+    assert data.loc[0, "low"] == 45.0
 
 
 def test_write_public_data_creates_parent_and_csv(tmp_path: Path) -> None:
