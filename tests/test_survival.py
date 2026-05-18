@@ -70,6 +70,30 @@ def test_build_survival_grid_splits_across_stages() -> None:
     ]
 
 
+def test_build_survival_grid_can_search_multiple_rule_families() -> None:
+    grid = build_survival_grid(
+        {
+            "rule": ["ma_crossover", "rsi_reversion", "mean_reversion"],
+            "fast_window": [2],
+            "slow_window": [5],
+            "rsi_window": [2],
+            "rsi_buy": [30],
+            "rsi_sell": [60],
+            "reversion_window": [10],
+            "entry_zscore": [1.0],
+            "exit_zscore": [0.0],
+        },
+        stage=0,
+        total_stages=1,
+    )
+
+    assert {candidate["rule"] for candidate in grid} == {
+        "ma_crossover",
+        "rsi_reversion",
+        "mean_reversion",
+    }
+
+
 def test_evaluate_survival_candidate_reports_locked_closed() -> None:
     row = evaluate_survival_candidate(
         sample_daily_data(),
@@ -82,6 +106,19 @@ def test_evaluate_survival_candidate_reports_locked_closed() -> None:
     assert row["locked_opened"] is False
     assert "train_calmar" in row
     assert "validation_calmar" in row
+
+
+def test_evaluate_survival_candidate_supports_non_ma_rules() -> None:
+    row = evaluate_survival_candidate(
+        sample_daily_data(),
+        {"rule": "rsi_reversion", "rsi_window": 2, "rsi_buy": 30, "rsi_sell": 60},
+        initial_cash=10_000,
+        commission_bps=0,
+        slippage_bps=0,
+    )
+
+    assert row["candidate_id"].startswith("rsi_buy_30")
+    assert row["locked_opened"] is False
 
 
 def test_merge_survival_leaderboard_preserves_best_score(tmp_path: Path) -> None:

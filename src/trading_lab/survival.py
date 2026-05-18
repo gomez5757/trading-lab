@@ -80,14 +80,39 @@ def build_survival_grid(
     stage: int,
     total_stages: int,
 ) -> list[dict[str, Any]]:
-    names = list(parameter_space)
-    values = [parameter_space[name] for name in names]
-    base = [
-        {"rule": "ma_crossover", **dict(zip(names, combination, strict=True))}
-        for combination in product(*values)
-    ]
+    base = _build_rule_candidates(parameter_space)
     grid = [candidate for candidate in base if _valid_candidate(candidate)]
     return [params for index, params in enumerate(grid) if index % total_stages == stage]
+
+
+def _build_rule_candidates(parameter_space: dict[str, list[Any]]) -> list[dict[str, Any]]:
+    if "rule" not in parameter_space:
+        names = list(parameter_space)
+        values = [parameter_space[name] for name in names]
+        return [
+            {"rule": "ma_crossover", **dict(zip(names, combination, strict=True))}
+            for combination in product(*values)
+        ]
+
+    candidates: list[dict[str, Any]] = []
+    for rule in parameter_space["rule"]:
+        names = _rule_parameter_names(str(rule), parameter_space)
+        values = [parameter_space[name] for name in names]
+        for combination in product(*values):
+            candidates.append({"rule": rule, **dict(zip(names, combination, strict=True))})
+    return candidates
+
+
+def _rule_parameter_names(rule: str, parameter_space: dict[str, list[Any]]) -> list[str]:
+    rule_names = {
+        "ma_crossover": ["fast_window", "slow_window"],
+        "momentum_threshold": ["momentum_window", "threshold"],
+        "mean_reversion": ["reversion_window", "entry_zscore", "exit_zscore"],
+        "rsi_reversion": ["rsi_window", "rsi_buy", "rsi_sell"],
+        "breakout": ["breakout_window", "exit_window"],
+        "volatility_momentum": ["momentum_window", "volatility_window", "volatility_quantile"],
+    }[rule]
+    return [name for name in rule_names if name in parameter_space]
 
 
 def evaluate_survival_candidate(
@@ -141,7 +166,8 @@ def _run_candidate(
     commission_bps: float,
     slippage_bps: float,
 ):
-    if params.get("rule") == "ma_crossover":
+    rule = params.get("rule")
+    if rule == "ma_crossover":
         return run_backtest(
             data,
             params=params,
@@ -149,11 +175,7 @@ def _run_candidate(
             commission_bps=commission_bps,
             slippage_bps=slippage_bps,
         )
-    signals = _momentum_signals(
-        data,
-        window=int(params["momentum_window"]),
-        threshold=float(params["threshold"]),
-    )
+    signals = _signals_for_rule(data, params)
     return _run_signals_backtest(
         data,
         signals=signals,
@@ -163,10 +185,139 @@ def _run_candidate(
     )
 
 
+def _signals_for_rule(data: pd.DataFrame, params: dict[str, Any]) -> pd.Series:
+    rule = params.get("rule")
+    if rule == "momentum_threshold":
+        return _momentum_signals(
+            data,
+            window=int(params["momentum_window"]),
+            threshold=float(params["threshold"]),
+        )
+    if rule == "mean_reversion":
+        return _mean_reversion_signals(
+            data,
+            window=int(params["reversion_window"]),
+            entry_zscore=float(params["entry_zscore"]),
+            exit_zscore=float(params["exit_zscore"]),
+        )
+    if rule == "rsi_reversion":
+        return _rsi_reversion_signals(
+            data,
+            window=int(params["rsi_window"]),
+            buy_level=float(params["rsi_buy"]),
+            sell_level=float(params["rsi_sell"]),
+        )
+    if rule == "breakout":
+        return _breakout_signals(
+            data,
+            breakout_window=int(params["breakout_window"]),
+            exit_window=int(params["exit_window"]),
+        )
+    if rule == "volatility_momentum":
+        return _volatility_momentum_signals(
+            data,
+            momentum_window=int(params["momentum_window"]),
+            volatility_window=int(params["volatility_window"]),
+            volatility_quantile=float(params["volatility_quantile"]),
+        )
+    raise ValueError(f"unsupported survival rule: {rule}")
+
+
 def _momentum_signals(data: pd.DataFrame, *, window: int, threshold: float) -> pd.Series:
     momentum = data["close"].pct_change(window)
     signal = (momentum > threshold).astype(int)
     signal[momentum.isna()] = 0
+    return signal
+
+
+def _mean_reversion_signals(
+    data: pd.DataFrame,
+    *,
+    window: int,
+    entry_zscore: float,
+    exit_zscore: float,
+) -> pd.Series:
+    close = data["close"].astype(float)
+    mean = close.rolling(window).mean()
+    std = close.rolling(window).std(ddof=0)
+    zscore = (close - mean) / std.replace(0, np.nan)
+    signal = pd.Series(0, index=data.index, dtype=int)
+    in_market = False
+    for timestamp, value in zscore.items():
+        if np.isnan(value):
+            signal.loc[timestamp] = int(in_market)
+            continue
+        if value <= -entry_zscore:
+            in_market = True
+        elif value >= exit_zscore:
+            in_market = False
+        signal.loc[timestamp] = int(in_market)
+    return signal
+
+
+def _rsi_reversion_signals(
+    data: pd.DataFrame,
+    *,
+    window: int,
+    buy_level: float,
+    sell_level: float,
+) -> pd.Series:
+    close = data["close"].astype(float)
+    diff = close.diff()
+    gain = diff.clip(lower=0).rolling(window).mean()
+    loss = (-diff.clip(upper=0)).rolling(window).mean()
+    rs = gain / loss.replace(0, np.nan)
+    rsi = 100 - (100 / (1 + rs))
+    signal = pd.Series(0, index=data.index, dtype=int)
+    in_market = False
+    for timestamp, value in rsi.items():
+        if np.isnan(value):
+            signal.loc[timestamp] = int(in_market)
+            continue
+        if value <= buy_level:
+            in_market = True
+        elif value >= sell_level:
+            in_market = False
+        signal.loc[timestamp] = int(in_market)
+    return signal
+
+
+def _breakout_signals(
+    data: pd.DataFrame,
+    *,
+    breakout_window: int,
+    exit_window: int,
+) -> pd.Series:
+    close = data["close"].astype(float)
+    prior_high = close.rolling(breakout_window).max().shift(1)
+    prior_low = close.rolling(exit_window).min().shift(1)
+    signal = pd.Series(0, index=data.index, dtype=int)
+    in_market = False
+    for timestamp, price in close.items():
+        high = prior_high.loc[timestamp]
+        low = prior_low.loc[timestamp]
+        if pd.notna(high) and price > high:
+            in_market = True
+        elif pd.notna(low) and price < low:
+            in_market = False
+        signal.loc[timestamp] = int(in_market)
+    return signal
+
+
+def _volatility_momentum_signals(
+    data: pd.DataFrame,
+    *,
+    momentum_window: int,
+    volatility_window: int,
+    volatility_quantile: float,
+) -> pd.Series:
+    close = data["close"].astype(float)
+    returns = close.pct_change()
+    momentum = close.pct_change(momentum_window)
+    volatility = returns.rolling(volatility_window).std(ddof=0)
+    volatility_limit = volatility.rolling(252, min_periods=volatility_window).quantile(volatility_quantile)
+    signal = ((momentum > 0) & (volatility < volatility_limit)).astype(int)
+    signal[momentum.isna() | volatility.isna() | volatility_limit.isna()] = 0
     return signal
 
 
@@ -276,12 +427,24 @@ def _candidate_id(params: dict[str, Any]) -> str:
 
 
 def _feature_count(params: dict[str, Any]) -> int:
-    if params.get("rule") == "ma_crossover":
-        return 2
-    return 1
+    rule_feature_count = {
+        "ma_crossover": 2,
+        "momentum_threshold": 1,
+        "mean_reversion": 2,
+        "rsi_reversion": 1,
+        "breakout": 2,
+        "volatility_momentum": 2,
+    }
+    return rule_feature_count.get(str(params.get("rule")), 1)
 
 
 def _valid_candidate(params: dict[str, Any]) -> bool:
     if params.get("rule") == "ma_crossover":
         return int(params["fast_window"]) < int(params["slow_window"])
+    if params.get("rule") == "mean_reversion":
+        return float(params["entry_zscore"]) > float(params["exit_zscore"])
+    if params.get("rule") == "rsi_reversion":
+        return float(params["rsi_buy"]) < float(params["rsi_sell"])
+    if params.get("rule") == "breakout":
+        return int(params["exit_window"]) <= int(params["breakout_window"])
     return True
