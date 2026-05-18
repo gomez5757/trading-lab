@@ -1,0 +1,16 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+data/*
+!data/.gitkeep
+!data/sample_ohlcv.csv
+
+outputs/*
+!outputs/.gitkeep
+
+*.log

@@ -1,0 +1,9 @@
+data_path: data/sample_ohlcv.csv
+output_dir: outputs/backtest
+execution:
+  initial_cash: 10000
+  commission_bps: 1
+  slippage_bps: 1
+strategy:
+  fast_window: 3
+  slow_window: 6

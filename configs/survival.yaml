@@ -1,0 +1,10 @@
+data_path: data/sample_ohlcv.csv
+output_dir: outputs/survival
+total_stages: 16
+execution:
+  initial_cash: 10000
+  commission_bps: 1
+  slippage_bps: 1
+parameter_space:
+  fast_window: [2, 3, 4, 5, 6, 7, 8]
+  slow_window: [10, 12, 14, 16, 18, 20, 24, 30]

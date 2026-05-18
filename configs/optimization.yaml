@@ -1,0 +1,10 @@
+data_path: data/sample_ohlcv.csv
+output_dir: outputs/optimization
+total_stages: 16
+execution:
+  initial_cash: 10000
+  commission_bps: 1
+  slippage_bps: 1
+parameter_space:
+  fast_window: [2, 3, 4, 5]
+  slow_window: [6, 8, 10, 12]
