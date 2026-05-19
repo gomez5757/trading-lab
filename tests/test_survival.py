@@ -271,6 +271,34 @@ def test_evaluate_survival_candidate_supports_long_short_feature_vote() -> None:
     assert row["locked_opened"] is False
 
 
+def test_evaluate_survival_candidate_supports_portfolio_regime() -> None:
+    data = sample_daily_data()
+    data["tlt_close_ratio"] = 1.0 + data["close"].pct_change().fillna(0.0).mul(-0.2).cumsum()
+    data["gld_close_ratio"] = 1.0 + data["close"].pct_change().fillna(0.0).mul(0.1).cumsum()
+    data["lqd_ret_63"] = data["close"].pct_change(63).fillna(0.0)
+    data["vix_ret_21"] = -data["close"].pct_change(21).fillna(0.0)
+
+    row = evaluate_survival_candidate(
+        data,
+        {
+            "rule": "portfolio_regime",
+            "risk_on_specs": encode_feature_spec(name="lqd_ret_63", kind="threshold", value=0.0),
+            "stress_specs": encode_feature_spec(name="vix_ret_21", kind="threshold", value=0.0),
+            "risk_on_min_votes": 1,
+            "stress_min_votes": 1,
+            "risk_asset": "SPY",
+            "safe_asset": "TLT",
+            "stress_asset": "GLD",
+        },
+        initial_cash=10_000,
+        commission_bps=0,
+        slippage_bps=0,
+    )
+
+    assert row["feature_count"] == 2
+    assert row["locked_opened"] is False
+
+
 def test_merge_survival_leaderboard_preserves_best_score(tmp_path: Path) -> None:
     first = tmp_path / "survival_stage_0.csv"
     second = tmp_path / "survival_stage_1.csv"

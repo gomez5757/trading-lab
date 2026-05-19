@@ -234,6 +234,14 @@ def _run_candidate(
             commission_bps=commission_bps,
             slippage_bps=slippage_bps,
         )
+    if rule == "portfolio_regime":
+        return _run_portfolio_regime_backtest(
+            data,
+            params=params,
+            initial_cash=initial_cash,
+            commission_bps=commission_bps,
+            slippage_bps=slippage_bps,
+        )
     signals = _signals_for_rule(data, params)
     return _run_signals_backtest(
         data,
@@ -595,6 +603,128 @@ def _run_signals_backtest(
     return BacktestResult(metrics=metrics, trades=trades, equity_curve=equity_curve)
 
 
+def _run_portfolio_regime_backtest(
+    data: pd.DataFrame,
+    *,
+    params: dict[str, Any],
+    initial_cash: float,
+    commission_bps: float,
+    slippage_bps: float,
+):
+    risk_on = _feature_vote_signals(
+        data,
+        specs=str(params["risk_on_specs"]),
+        min_votes=int(params["risk_on_min_votes"]),
+    ).astype(bool)
+    stress = _feature_vote_signals(
+        data,
+        specs=str(params["stress_specs"]),
+        min_votes=int(params["stress_min_votes"]),
+    ).astype(bool)
+    asset = pd.Series(str(params["safe_asset"]), index=data.index, dtype=object)
+    asset[risk_on] = str(params["risk_asset"])
+    asset[stress] = str(params["stress_asset"])
+    strategy_returns = _asset_returns(data, asset).shift(1).fillna(0.0)
+    cost_rate = (commission_bps + slippage_bps) / 10_000
+    turnover = (asset != asset.shift(1)).astype(float)
+    strategy_returns = strategy_returns - turnover * cost_rate
+    return _run_strategy_returns_backtest(
+        data,
+        strategy_returns=strategy_returns,
+        state=asset,
+        initial_cash=initial_cash,
+    )
+
+
+def _asset_returns(data: pd.DataFrame, asset: pd.Series) -> pd.Series:
+    returns_by_asset = {name: _single_asset_returns(data, name) for name in sorted(set(asset))}
+    selected = pd.Series(0.0, index=data.index)
+    for name, returns in returns_by_asset.items():
+        selected[asset == name] = returns.reindex(data.index).fillna(0.0)[asset == name]
+    return selected
+
+
+def _single_asset_returns(data: pd.DataFrame, asset: str) -> pd.Series:
+    asset = asset.upper()
+    if asset == "CASH":
+        return pd.Series(0.0, index=data.index)
+    if asset == "SPY":
+        price = data["close"].astype(float)
+    else:
+        ratio_column = f"{asset.lower()}_close_ratio"
+        if ratio_column not in data.columns:
+            raise ValueError(f"asset ratio column not found: {ratio_column}")
+        price = data[ratio_column].astype(float) * data["close"].astype(float)
+    return price.pct_change().fillna(0.0)
+
+
+def _run_strategy_returns_backtest(
+    data: pd.DataFrame,
+    *,
+    strategy_returns: pd.Series,
+    state: pd.Series,
+    initial_cash: float,
+):
+    from trading_lab.backtest import BacktestResult, calculate_metrics
+
+    equity = initial_cash * (1.0 + strategy_returns.reindex(data.index).fillna(0.0)).cumprod()
+    equity_curve = pd.DataFrame({"timestamp": data.index, "equity": equity.to_numpy()})
+    trades = _trades_from_state(data, state.reindex(data.index).ffill().fillna("CASH"), equity, initial_cash)
+    metrics = calculate_metrics(equity_curve, trades, initial_cash)
+    return BacktestResult(metrics=metrics, trades=trades, equity_curve=equity_curve)
+
+
+def _trades_from_state(
+    data: pd.DataFrame,
+    state: pd.Series,
+    equity: pd.Series,
+    initial_cash: float,
+) -> pd.DataFrame:
+    rows = []
+    previous_state = None
+    entry_time = None
+    entry_equity = initial_cash
+    for timestamp, current_state in state.items():
+        if previous_state is None:
+            previous_state = current_state
+            entry_time = timestamp
+            entry_equity = float(equity.loc[timestamp])
+            continue
+        if current_state != previous_state:
+            exit_equity = float(equity.loc[timestamp])
+            rows.append(
+                {
+                    "entry_time": entry_time,
+                    "exit_time": timestamp,
+                    "entry_price": entry_equity,
+                    "exit_price": exit_equity,
+                    "pnl": exit_equity - entry_equity,
+                    "return_pct": (exit_equity / entry_equity - 1.0) * 100 if entry_equity else 0.0,
+                    "exit_equity": exit_equity,
+                }
+            )
+            previous_state = current_state
+            entry_time = timestamp
+            entry_equity = exit_equity
+    if entry_time is not None and not state.empty:
+        exit_equity = float(equity.iloc[-1])
+        rows.append(
+            {
+                "entry_time": entry_time,
+                "exit_time": data.index[-1],
+                "entry_price": entry_equity,
+                "exit_price": exit_equity,
+                "pnl": exit_equity - entry_equity,
+                "return_pct": (exit_equity / entry_equity - 1.0) * 100 if entry_equity else 0.0,
+                "exit_equity": exit_equity,
+            }
+        )
+    return pd.DataFrame(
+        rows,
+        columns=["entry_time", "exit_time", "entry_price", "exit_price", "pnl", "return_pct", "exit_equity"],
+    )
+
+
 def _survival_metrics(
     equity_curve: pd.DataFrame,
     metrics: dict[str, float],
@@ -712,6 +842,8 @@ def _feature_count(params: dict[str, Any]) -> int:
         "feature_score": len(_decode_feature_specs(str(params.get("feature_specs", "")))),
         "feature_vote_position": len(_decode_feature_specs(str(params.get("long_specs", ""))))
         + len(_decode_feature_specs(str(params.get("short_specs", "")))),
+        "portfolio_regime": len(_decode_feature_specs(str(params.get("risk_on_specs", ""))))
+        + len(_decode_feature_specs(str(params.get("stress_specs", "")))),
     }
     return rule_feature_count.get(str(params.get("rule")), 1)
 
@@ -739,6 +871,16 @@ def _valid_candidate(params: dict[str, Any]) -> bool:
             and bool(params.get("short_specs"))
             and int(params.get("long_min_votes", 0)) >= 1
             and int(params.get("short_min_votes", 0)) >= 1
+        )
+    if params.get("rule") == "portfolio_regime":
+        return (
+            bool(params.get("risk_on_specs"))
+            and bool(params.get("stress_specs"))
+            and int(params.get("risk_on_min_votes", 0)) >= 1
+            and int(params.get("stress_min_votes", 0)) >= 1
+            and bool(params.get("risk_asset"))
+            and bool(params.get("safe_asset"))
+            and bool(params.get("stress_asset"))
         )
     return True
 

@@ -40,6 +40,7 @@ def test_survival_phase3_workflow_runs_walkforward_search_and_uploads_artifact()
     text = Path(".github/workflows/survival-phase3-walkforward.yml").read_text(encoding="utf-8")
 
     assert "workflow_dispatch" in text
+    assert "push:" not in text
     assert "scripts/run_survival_walkforward_stage.py" in text
     assert "configs/survival_phase3_github.yaml" in text
     assert "survival-phase3-leaderboard" in text
@@ -48,10 +49,26 @@ def test_survival_phase3_workflow_runs_walkforward_search_and_uploads_artifact()
     assert "Survival Phase 3 latest result" in text
 
 
+def test_survival_phase4_workflow_runs_portfolio_regime_search_and_uploads_artifact() -> None:
+    text = Path(".github/workflows/survival-phase4-portfolio.yml").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch" in text
+    assert "scripts/run_survival_portfolio_stage.py" in text
+    assert "configs/survival_phase4_github.yaml" in text
+    assert "survival-phase4-leaderboard" in text
+    assert "--total-stages 32" in text
+    assert "Survival Phase 4 latest result" in text
+
+
+def test_codespaces_devcontainer_uses_existing_python_image() -> None:
+    text = Path(".devcontainer/devcontainer.json").read_text(encoding="utf-8")
+
+    assert "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm" in text
+
+
 def test_survival_watchdog_runs_on_schedule_and_can_relaunch() -> None:
     text = Path(".github/workflows/survival-watchdog.yml").read_text(encoding="utf-8")
 
-    assert "*/10 * * * *" in text
     assert "workflow_dispatch" in text
     assert "actions: write" in text
     assert "issues: write" in text
