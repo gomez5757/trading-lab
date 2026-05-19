@@ -1,16 +1,6 @@
 name: Survival Search Phase 2 Combo
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/survival-phase2-combo.yml"
-      - "configs/survival_phase2_github.yaml"
-      - "configs/survival_phase2_seeds.json"
-      - "scripts/download_public_data.py"
-      - "scripts/run_survival_combo_stage.py"
-      - "scripts/merge_survival_leaderboards.py"
-      - "src/**"
   workflow_dispatch:
     inputs:
       config:
