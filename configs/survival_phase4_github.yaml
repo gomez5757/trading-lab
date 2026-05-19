@@ -1,6 +1,6 @@
 data_path: data/public/spy_daily.csv
 output_dir: outputs/survival_phase4
-total_stages: 64
+total_stages: 32
 execution:
   initial_cash: 10000
   commission_bps: 0
