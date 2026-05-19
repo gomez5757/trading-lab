@@ -176,6 +176,15 @@ def evaluate_survival_candidate(
         "validation_negative_years": _negative_year_count(validation_result.equity_curve),
         "locked_opened": False,
     }
+    if params.get("rule") == "spy_long_short_always":
+        row.update(
+            {
+                "traded_asset": "SPY",
+                "cash_allowed": False,
+                "always_fully_invested": True,
+                "long_fraction": _signal_long_fraction(train, params),
+            }
+        )
     checks = criteria.checks(row)
     row["robust_passes"] = criteria.pass_count(row)
     row["robust_total"] = len(checks)
@@ -322,6 +331,14 @@ def _signals_for_rule(data: pd.DataFrame, params: dict[str, Any]) -> pd.Series:
         )
     if rule == "feature_vote_position":
         return _feature_vote_position_signals(
+            data,
+            long_specs=str(params["long_specs"]),
+            short_specs=str(params["short_specs"]),
+            long_min_votes=int(params["long_min_votes"]),
+            short_min_votes=int(params["short_min_votes"]),
+        )
+    if rule == "spy_long_short_always":
+        return _spy_long_short_always_signals(
             data,
             long_specs=str(params["long_specs"]),
             short_specs=str(params["short_specs"]),
@@ -538,6 +555,29 @@ def _feature_vote_position_signals(
     signal[long_signal] = 1
     signal[short_signal & ~long_signal] = -1
     return signal
+
+
+def _spy_long_short_always_signals(
+    data: pd.DataFrame,
+    *,
+    long_specs: str,
+    short_specs: str,
+    long_min_votes: int,
+    short_min_votes: int,
+) -> pd.Series:
+    long_signal = _feature_vote_signals(data, specs=long_specs, min_votes=long_min_votes).astype(bool)
+    short_signal = _feature_vote_signals(data, specs=short_specs, min_votes=short_min_votes).astype(bool)
+    signal = pd.Series(1, index=data.index, dtype=int)
+    signal[short_signal & ~long_signal] = -1
+    return signal
+
+
+def _signal_long_fraction(data: pd.DataFrame, params: dict[str, Any]) -> float:
+    if data.empty:
+        return 0.0
+    signals = _signals_for_rule(data, params)
+    position = signals.shift(1).fillna(1).astype(int)
+    return float((position > 0).mean())
 
 
 def encode_feature_spec(
@@ -842,6 +882,8 @@ def _feature_count(params: dict[str, Any]) -> int:
         "feature_score": len(_decode_feature_specs(str(params.get("feature_specs", "")))),
         "feature_vote_position": len(_decode_feature_specs(str(params.get("long_specs", ""))))
         + len(_decode_feature_specs(str(params.get("short_specs", "")))),
+        "spy_long_short_always": len(_decode_feature_specs(str(params.get("long_specs", ""))))
+        + len(_decode_feature_specs(str(params.get("short_specs", "")))),
         "portfolio_regime": len(_decode_feature_specs(str(params.get("risk_on_specs", ""))))
         + len(_decode_feature_specs(str(params.get("stress_specs", "")))),
     }
@@ -866,6 +908,13 @@ def _valid_candidate(params: dict[str, Any]) -> bool:
     if params.get("rule") == "feature_score":
         return bool(params.get("feature_specs"))
     if params.get("rule") == "feature_vote_position":
+        return (
+            bool(params.get("long_specs"))
+            and bool(params.get("short_specs"))
+            and int(params.get("long_min_votes", 0)) >= 1
+            and int(params.get("short_min_votes", 0)) >= 1
+        )
+    if params.get("rule") == "spy_long_short_always":
         return (
             bool(params.get("long_specs"))
             and bool(params.get("short_specs"))

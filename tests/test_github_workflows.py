@@ -60,6 +60,20 @@ def test_survival_phase4_workflow_runs_portfolio_regime_search_and_uploads_artif
     assert "Survival Phase 4 latest result" in text
 
 
+def test_survival_spy_only_workflow_enforces_single_asset_always_invested_search() -> None:
+    text = Path(".github/workflows/survival-spy-only.yml").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch" in text
+    assert "scripts/run_survival_spy_only_stage.py" in text
+    assert "survival-spy-only-leaderboard" in text
+    assert "--total-stages 64" in text
+    assert "SPY-only" in text
+    assert "TLT" not in text
+    assert "GLD" not in text
+    assert "SHY" not in text
+    assert "CASH" not in text
+
+
 def test_codespaces_devcontainer_uses_existing_python_image() -> None:
     text = Path(".devcontainer/devcontainer.json").read_text(encoding="utf-8")
 

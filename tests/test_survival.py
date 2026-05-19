@@ -271,6 +271,34 @@ def test_evaluate_survival_candidate_supports_long_short_feature_vote() -> None:
     assert row["locked_opened"] is False
 
 
+def test_spy_only_always_invested_rule_never_goes_to_cash() -> None:
+    data = sample_daily_data()
+    data["slow_trend"] = data["close"].pct_change(63).fillna(0.0)
+    data["stress"] = -data["close"].pct_change(21).fillna(0.0)
+    long_specs = encode_feature_spec(name="slow_trend", kind="threshold", value=0.0)
+    short_specs = encode_feature_spec(name="stress", kind="threshold", value=0.0)
+
+    signals = evaluate_survival_candidate(
+        data,
+        {
+            "rule": "spy_long_short_always",
+            "long_specs": long_specs,
+            "short_specs": short_specs,
+            "long_min_votes": 1,
+            "short_min_votes": 1,
+        },
+        initial_cash=10_000,
+        commission_bps=0,
+        slippage_bps=0,
+    )
+
+    assert signals["traded_asset"] == "SPY"
+    assert signals["cash_allowed"] is False
+    assert signals["always_fully_invested"] is True
+    assert signals["feature_count"] == 2
+    assert signals["locked_opened"] is False
+
+
 def test_evaluate_survival_candidate_supports_portfolio_regime() -> None:
     data = sample_daily_data()
     data["tlt_close_ratio"] = 1.0 + data["close"].pct_change().fillna(0.0).mul(-0.2).cumsum()
