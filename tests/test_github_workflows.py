@@ -92,14 +92,11 @@ def test_survival_spy_only_adaptive_workflow_runs_train_first_search() -> None:
     assert "CASH" not in text
 
 
-def test_survival_spy_only_beam_workflow_starts_after_adaptive_search() -> None:
+def test_survival_spy_only_beam_workflow_can_be_triggered_without_duplicates() -> None:
     text = Path(".github/workflows/survival-spy-only-beam.yml").read_text(encoding="utf-8")
 
     assert ".github/beam-trigger.txt" in text
-    assert "workflow_run" in text
-    assert 'workflows: ["SPY-only Adaptive Train-first Search"]' in text
-    assert "types: [completed]" in text
-    assert "github.event.workflow_run.conclusion == 'success'" in text
+    assert "workflow_run" not in text
     assert "workflow_dispatch" in text
     assert "scripts/run_survival_spy_only_beam_stage.py" in text
     assert "survival-spy-only-beam-leaderboard" in text
