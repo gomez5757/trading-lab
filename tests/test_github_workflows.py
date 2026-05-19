@@ -125,6 +125,24 @@ def test_survival_spy_only_meta_workflow_adds_bayesian_bandit_and_genetic() -> N
     assert "CASH" not in text
 
 
+def test_survival_spy_only_shootout_workflow_compares_all_methods_manually() -> None:
+    text = Path(".github/workflows/survival-spy-only-shootout.yml").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch" in text
+    assert "push:" not in text
+    assert "method: [adaptive, beam, bayesian, bandit, genetic]" in text
+    assert "scripts/run_survival_spy_only_shootout_stage.py" in text
+    assert "scripts/merge_shootout_leaderboards.py" in text
+    assert "--total-stages 12" in text
+    assert "--budget 720" in text
+    assert "survival-spy-only-shootout-leaderboard" in text
+    assert "SPY-only" in text
+    assert "TLT" not in text
+    assert "GLD" not in text
+    assert "SHY" not in text
+    assert "CASH" not in text
+
+
 def test_codespaces_devcontainer_uses_existing_python_image() -> None:
     text = Path(".devcontainer/devcontainer.json").read_text(encoding="utf-8")
 
