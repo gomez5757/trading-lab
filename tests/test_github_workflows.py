@@ -36,6 +36,18 @@ def test_survival_phase2_workflow_runs_combo_search_and_uploads_artifact() -> No
     assert "Survival Phase 2 latest result" in text
 
 
+def test_survival_phase3_workflow_runs_walkforward_search_and_uploads_artifact() -> None:
+    text = Path(".github/workflows/survival-phase3-walkforward.yml").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch" in text
+    assert "scripts/run_survival_walkforward_stage.py" in text
+    assert "configs/survival_phase3_github.yaml" in text
+    assert "survival-phase3-leaderboard" in text
+    assert "--total-stages 64" in text
+    assert "Train block min Calmar" in text
+    assert "Survival Phase 3 latest result" in text
+
+
 def test_survival_watchdog_runs_on_schedule_and_can_relaunch() -> None:
     text = Path(".github/workflows/survival-watchdog.yml").read_text(encoding="utf-8")
 

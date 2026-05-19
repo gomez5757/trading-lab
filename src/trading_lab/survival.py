@@ -312,6 +312,14 @@ def _signals_for_rule(data: pd.DataFrame, params: dict[str, Any]) -> pd.Series:
             specs=str(params["feature_specs"]),
             score_threshold=float(params["score_threshold"]),
         )
+    if rule == "feature_vote_position":
+        return _feature_vote_position_signals(
+            data,
+            long_specs=str(params["long_specs"]),
+            short_specs=str(params["short_specs"]),
+            long_min_votes=int(params["long_min_votes"]),
+            short_min_votes=int(params["short_min_votes"]),
+        )
     raise ValueError(f"unsupported survival rule: {rule}")
 
 
@@ -508,6 +516,22 @@ def _feature_score_signals(
     return signal
 
 
+def _feature_vote_position_signals(
+    data: pd.DataFrame,
+    *,
+    long_specs: str,
+    short_specs: str,
+    long_min_votes: int,
+    short_min_votes: int,
+) -> pd.Series:
+    long_signal = _feature_vote_signals(data, specs=long_specs, min_votes=long_min_votes).astype(bool)
+    short_signal = _feature_vote_signals(data, specs=short_specs, min_votes=short_min_votes).astype(bool)
+    signal = pd.Series(0, index=data.index, dtype=int)
+    signal[long_signal] = 1
+    signal[short_signal & ~long_signal] = -1
+    return signal
+
+
 def encode_feature_spec(
     *,
     name: str,
@@ -617,18 +641,15 @@ def _trades_from_position(
     initial_cash: float,
 ) -> pd.DataFrame:
     rows = []
-    in_trade = False
+    active_side = 0
     entry_time = None
     entry_price = 0.0
     current_equity = initial_cash
     for timestamp, target in position.items():
         close = float(data.loc[timestamp, "close"])
-        if target == 1 and not in_trade:
-            in_trade = True
-            entry_time = timestamp
-            entry_price = close
-        elif target == 0 and in_trade:
-            return_pct = close / entry_price - 1
+        target_side = int(target)
+        if target_side != active_side and active_side != 0:
+            return_pct = active_side * (close / entry_price - 1)
             current_equity *= 1 + return_pct
             rows.append(
                 {
@@ -641,7 +662,26 @@ def _trades_from_position(
                     "exit_equity": current_equity,
                 }
             )
-            in_trade = False
+        if target_side != active_side and target_side != 0:
+            entry_time = timestamp
+            entry_price = close
+        active_side = target_side
+    if active_side != 0 and entry_time is not None:
+        timestamp = data.index[-1]
+        close = float(data.iloc[-1]["close"])
+        return_pct = active_side * (close / entry_price - 1)
+        current_equity *= 1 + return_pct
+        rows.append(
+            {
+                "entry_time": entry_time,
+                "exit_time": timestamp,
+                "entry_price": entry_price,
+                "exit_price": close,
+                "pnl": current_equity - initial_cash,
+                "return_pct": return_pct * 100,
+                "exit_equity": current_equity,
+            }
+        )
     return pd.DataFrame(
         rows,
         columns=["entry_time", "exit_time", "entry_price", "exit_price", "pnl", "return_pct", "exit_equity"],
@@ -670,6 +710,8 @@ def _feature_count(params: dict[str, Any]) -> int:
         "feature_zscore": 1,
         "feature_vote": len(_decode_feature_specs(str(params.get("feature_specs", "")))),
         "feature_score": len(_decode_feature_specs(str(params.get("feature_specs", "")))),
+        "feature_vote_position": len(_decode_feature_specs(str(params.get("long_specs", ""))))
+        + len(_decode_feature_specs(str(params.get("short_specs", "")))),
     }
     return rule_feature_count.get(str(params.get("rule")), 1)
 
@@ -691,6 +733,13 @@ def _valid_candidate(params: dict[str, Any]) -> bool:
         return bool(params.get("feature_specs")) and int(params.get("min_votes", 0)) >= 1
     if params.get("rule") == "feature_score":
         return bool(params.get("feature_specs"))
+    if params.get("rule") == "feature_vote_position":
+        return (
+            bool(params.get("long_specs"))
+            and bool(params.get("short_specs"))
+            and int(params.get("long_min_votes", 0)) >= 1
+            and int(params.get("short_min_votes", 0)) >= 1
+        )
     return True
 
 

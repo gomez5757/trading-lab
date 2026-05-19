@@ -246,6 +246,31 @@ def test_evaluate_survival_candidate_supports_feature_score_combo() -> None:
     assert row["locked_opened"] is False
 
 
+def test_evaluate_survival_candidate_supports_long_short_feature_vote() -> None:
+    data = sample_daily_data()
+    data["lqd_ret_63"] = data["close"].pct_change(63).fillna(0.0)
+    data["vix_ret_21"] = -data["close"].pct_change(21).fillna(0.0)
+    long_specs = encode_feature_spec(name="lqd_ret_63", kind="threshold", value=0.0)
+    short_specs = encode_feature_spec(name="vix_ret_21", kind="threshold", value=0.0)
+
+    row = evaluate_survival_candidate(
+        data,
+        {
+            "rule": "feature_vote_position",
+            "long_specs": long_specs,
+            "short_specs": short_specs,
+            "long_min_votes": 1,
+            "short_min_votes": 1,
+        },
+        initial_cash=10_000,
+        commission_bps=0,
+        slippage_bps=0,
+    )
+
+    assert row["feature_count"] == 2
+    assert row["locked_opened"] is False
+
+
 def test_merge_survival_leaderboard_preserves_best_score(tmp_path: Path) -> None:
     first = tmp_path / "survival_stage_0.csv"
     second = tmp_path / "survival_stage_1.csv"
