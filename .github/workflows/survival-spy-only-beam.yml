@@ -1,6 +1,10 @@
 name: SPY-only Beam Search
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/beam-trigger.txt"
   workflow_dispatch:
     inputs:
       config:
