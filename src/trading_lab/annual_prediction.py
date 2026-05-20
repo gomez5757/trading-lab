@@ -181,6 +181,10 @@ def score_annual_candidate(
         if field == "rejection_reason":
             return _train_only_100_rejection_reason(row)
         return _train_only_100_score(row)
+    if score_mode == "train_validation_100":
+        if field == "rejection_reason":
+            return _train_validation_100_rejection_reason(row)
+        return _train_only_100_score(row)
     if score_mode != "validation":
         raise ValueError(f"unknown annual score mode: {score_mode}")
     if field == "rejection_reason":
@@ -773,6 +777,21 @@ def _train_only_100_rejection_reason(row: dict[str, object]) -> str:
         return "misses_train_stress"
     if int(row.get("feature_count", 1) or 1) > 5:
         return "too_many_features"
+    return ""
+
+
+def _train_validation_100_rejection_reason(row: dict[str, object]) -> str:
+    train_reason = _train_only_100_rejection_reason(row)
+    if train_reason:
+        return train_reason
+    if int(row.get("validation_total", 0) or 0) < 8:
+        return "too_few_validation_years"
+    if float(row.get("validation_accuracy", 0.0) or 0.0) < 1.0:
+        return "validation_not_perfect"
+    if int(row.get("validation_negative_total", 0) or 0) and int(row.get("validation_negative_hits", 0) or 0) < int(
+        row.get("validation_negative_total", 0) or 0
+    ):
+        return "misses_validation_stress"
     return ""
 
 

@@ -200,3 +200,50 @@ def test_train_only_100_acceptance_requires_perfect_train_only() -> None:
         score_annual_candidate(train_perfect_validation_bad, score_mode="train_only_100", field="rejection_reason")
         == ""
     )
+
+
+def test_train_validation_100_score_ignores_validation_quality_but_acceptance_requires_it() -> None:
+    perfect_train_good_validation = {
+        "feature_count": 2,
+        "train_hits": 25,
+        "train_total": 25,
+        "train_accuracy": 1.0,
+        "train_negative_hits": 6,
+        "train_negative_total": 6,
+        "train_return_mae": 0.10,
+        "validation_hits": 11,
+        "validation_total": 11,
+        "validation_accuracy": 1.0,
+        "validation_negative_hits": 3,
+        "validation_negative_total": 3,
+    }
+    perfect_train_bad_validation = {
+        **perfect_train_good_validation,
+        "validation_hits": 9,
+        "validation_accuracy": 9 / 11,
+        "validation_negative_hits": 1,
+    }
+
+    assert score_annual_candidate(
+        perfect_train_good_validation,
+        score_mode="train_validation_100",
+    ) == score_annual_candidate(
+        perfect_train_bad_validation,
+        score_mode="train_validation_100",
+    )
+    assert (
+        score_annual_candidate(
+            perfect_train_good_validation,
+            score_mode="train_validation_100",
+            field="rejection_reason",
+        )
+        == ""
+    )
+    assert (
+        score_annual_candidate(
+            perfect_train_bad_validation,
+            score_mode="train_validation_100",
+            field="rejection_reason",
+        )
+        == "validation_not_perfect"
+    )
