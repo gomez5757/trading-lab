@@ -324,6 +324,47 @@ def test_train_validation_100_score_ignores_validation_quality_but_acceptance_re
     )
 
 
+def test_train_validation_hunt_100_score_prefers_validation_progress() -> None:
+    almost = {
+        "feature_count": 4,
+        "train_accuracy": 1.0,
+        "validation_accuracy": 0.91,
+        "train_negative_hits": 6,
+        "train_negative_total": 6,
+        "validation_negative_hits": 2,
+        "validation_negative_total": 3,
+        "train_return_mae": 0.1,
+        "validation_return_mae": 0.1,
+    }
+    closer = {**almost, "validation_accuracy": 1.0, "validation_negative_hits": 3}
+
+    assert score_annual_candidate(closer, score_mode="train_validation_hunt_100") > score_annual_candidate(
+        almost,
+        score_mode="train_validation_hunt_100",
+    )
+
+
+def test_train_validation_hunt_100_uses_strict_train_validation_acceptance() -> None:
+    row = {
+        "feature_count": 5,
+        "train_total": 25,
+        "train_accuracy": 1.0,
+        "train_negative_hits": 6,
+        "train_negative_total": 6,
+        "validation_total": 11,
+        "validation_accuracy": 1.0,
+        "validation_negative_hits": 3,
+        "validation_negative_total": 3,
+    }
+    weak = {**row, "validation_accuracy": 0.99}
+
+    assert score_annual_candidate(row, score_mode="train_validation_hunt_100", field="rejection_reason") == ""
+    assert (
+        score_annual_candidate(weak, score_mode="train_validation_hunt_100", field="rejection_reason")
+        == "validation_not_perfect"
+    )
+
+
 def test_crisis_stable_score_penalizes_large_false_negatives() -> None:
     good = {
         "feature_count": 3,

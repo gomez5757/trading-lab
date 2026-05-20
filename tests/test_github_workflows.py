@@ -255,6 +255,25 @@ def test_annual_sp500_crisis_stable_workflow_runs_simple_stable_detector() -> No
     assert "santa" in config
 
 
+def test_annual_sp500_loop_until_goal_runs_round_pack_without_locked() -> None:
+    text = Path(".github/workflows/annual-sp500-loop-until-goal.yml").read_text(encoding="utf-8")
+    config = Path("configs/annual_sp500_loop_until_goal.yaml").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch" in text
+    assert "push:" in text
+    assert ".github/annual-loop-trigger.txt" in text
+    assert "round: [no_santa_6, no_santa_8, no_santa_no_vix_russell_8, clean_macro_cycle_8]" in text
+    assert "stage: [0, 1, 2" in text
+    assert "--score-mode train_validation_hunt_100" in text
+    assert "--random-seed" in text
+    assert "--round-name" in text
+    assert "--top-rows-per-stage 1000" in text
+    assert "annual-sp500-loop-leaderboard" in text
+    assert "locked_opened: false" in text
+    assert "score_mode: train_validation_hunt_100" in config
+    assert "max_features: 8" in config
+
+
 def test_heavy_workflows_do_not_run_on_push() -> None:
     for path in (
         ".github/workflows/annual-sp500-beam.yml",

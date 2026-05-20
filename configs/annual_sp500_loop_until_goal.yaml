@@ -1,0 +1,7 @@
+data_path: data/public/sp500_annual_daily.csv
+output_dir: outputs/annual_sp500_loop_until_goal
+start_year: 1980
+end_year: 2025
+score_mode: train_validation_hunt_100
+max_features: 8
+random_seed: 173000

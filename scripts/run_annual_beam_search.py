@@ -28,6 +28,9 @@ def main() -> int:
     parser.add_argument("--score-mode", default=None)
     parser.add_argument("--top-rows-per-stage", type=int, default=None)
     parser.add_argument("--exclude-feature-contains", action="append", default=[])
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--round-name", default=None)
+    parser.add_argument("--random-seed", type=int, default=None)
     args = parser.parse_args()
 
     output_dir = Path("outputs/annual_sp500_beam")
@@ -35,7 +38,7 @@ def main() -> int:
     try:
         raw_config = load_yaml(args.config)
         data_path = raw_config.get("data_path", "data/public/sp500_annual_daily.csv")
-        output_dir = Path(raw_config.get("output_dir", "outputs/annual_sp500_beam"))
+        output_dir = Path(args.output_dir or raw_config.get("output_dir", "outputs/annual_sp500_beam"))
         daily = load_market_data(data_path)
         examples = build_annual_examples(
             daily,
@@ -53,6 +56,7 @@ def main() -> int:
             max_features=int(args.max_features or raw_config.get("max_features", 4)),
             score_mode=str(args.score_mode or raw_config.get("score_mode", "validation")),
             excluded_feature_terms=tuple(args.exclude_feature_contains or raw_config.get("excluded_feature_terms", []) or []),
+            random_seed=int(args.random_seed or raw_config.get("random_seed", 173_000)),
         )
         rows = run_annual_beam_search(examples, config)
     except Exception as exc:
@@ -70,6 +74,8 @@ def main() -> int:
     total_rows = len(rows)
     for row in rows:
         row["stage"] = args.stage
+        if args.round_name:
+            row["round_name"] = args.round_name
         row["stage_candidates_evaluated"] = total_rows
     top_rows = int(args.top_rows_per_stage or 0)
     if top_rows > 0 and len(rows) > top_rows:
@@ -80,7 +86,8 @@ def main() -> int:
         by_id = {str(row.get("candidate_id")): row for row in [*top, *accepted_rows]}
         rows = sorted(by_id.values(), key=lambda row: float(row.get("annual_score", -1_000_000.0) or -1_000_000.0), reverse=True)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"annual_sp500_beam_stage_{args.stage}.csv"
+    filename = f"annual_sp500_beam_{args.round_name}_stage_{args.stage}.csv" if args.round_name else f"annual_sp500_beam_stage_{args.stage}.csv"
+    output_path = output_dir / filename
     pd.DataFrame(rows).to_csv(output_path, index=False)
     print(
         json.dumps(
