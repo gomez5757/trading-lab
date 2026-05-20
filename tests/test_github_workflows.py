@@ -192,47 +192,6 @@ def test_annual_sp500_train_only_100_workflow_optimizes_train_only() -> None:
     assert "locked_opened: false" in text
 
 
-def test_annual_sp500_train_validation_100_config_requires_both_periods() -> None:
-    text = Path("configs/annual_sp500_train_validation_100.yaml").read_text(encoding="utf-8")
-
-    assert "score_mode: train_validation_100" in text
-    assert "max_features: 5" in text
-
-
-def test_annual_sp500_train_validation_100_workflow_requires_both_periods() -> None:
-    text = Path(".github/workflows/annual-sp500-train-validation-100.yml").read_text(encoding="utf-8")
-
-    assert "workflow_dispatch" in text
-    assert "push:" in text
-    assert ".github/train-validation-100-trigger.txt" in text
-    assert "configs/annual_sp500_train_validation_100.yaml" in text
-    assert "--score-mode train_validation_100" in text
-    assert "--max-features 5" in text
-    assert "--total-stages 64" in text
-    assert "annual-sp500-train-validation-100-leaderboard" in text
-    assert "locked_opened: false" in text
-
-
-def test_annual_sp500_train_validation_wide_workflow_expands_search() -> None:
-    text = Path(".github/workflows/annual-sp500-train-validation-wide.yml").read_text(encoding="utf-8")
-    config = Path("configs/annual_sp500_train_validation_100_wide.yaml").read_text(encoding="utf-8")
-
-    assert "workflow_dispatch" in text
-    assert "push:" in text
-    assert ".github/train-validation-wide-trigger.txt" in text
-    assert "configs/annual_sp500_train_validation_100_wide.yaml" in text
-    assert "--score-mode train_validation_100" in text
-    assert "--max-features 6" in text
-    assert "--seed-pool 3000" in text
-    assert "--beam-width 128" in text
-    assert "--generations 18" in text
-    assert "--mutations-per-parent 32" in text
-    assert "--top-rows-per-stage 5000" in text
-    assert "annual-sp500-train-validation-wide-leaderboard" in text
-    assert "score_mode: train_validation_100" in config
-    assert "max_features: 6" in config
-
-
 def test_annual_sp500_crisis_stable_workflow_runs_simple_stable_detector() -> None:
     text = Path(".github/workflows/annual-sp500-crisis-stable.yml").read_text(encoding="utf-8")
     config = Path("configs/annual_sp500_crisis_stable.yaml").read_text(encoding="utf-8")
@@ -255,23 +214,30 @@ def test_annual_sp500_crisis_stable_workflow_runs_simple_stable_detector() -> No
     assert "santa" in config
 
 
-def test_annual_sp500_loop_until_goal_runs_round_pack_without_locked() -> None:
-    text = Path(".github/workflows/annual-sp500-loop-until-goal.yml").read_text(encoding="utf-8")
-    config = Path("configs/annual_sp500_loop_until_goal.yaml").read_text(encoding="utf-8")
+def test_annual_validation_optimization_workflows_are_removed() -> None:
+    forbidden_paths = (
+        ".github/workflows/annual-sp500-train-validation-100.yml",
+        ".github/workflows/annual-sp500-train-validation-wide.yml",
+        ".github/workflows/annual-sp500-loop-until-goal.yml",
+        ".github/train-validation-100-trigger.txt",
+        ".github/train-validation-wide-trigger.txt",
+        ".github/annual-loop-trigger.txt",
+        "configs/annual_sp500_train_validation_100.yaml",
+        "configs/annual_sp500_train_validation_100_wide.yaml",
+        "configs/annual_sp500_loop_until_goal.yaml",
+    )
 
-    assert "workflow_dispatch" in text
-    assert "push:" in text
-    assert ".github/annual-loop-trigger.txt" in text
-    assert "round: [no_santa_6, no_santa_8, no_santa_no_vix_russell_8, clean_macro_cycle_8]" in text
-    assert "stage: [0, 1, 2" in text
-    assert "--score-mode train_validation_hunt_100" in text
-    assert "--random-seed" in text
-    assert "--round-name" in text
-    assert "--top-rows-per-stage 1000" in text
-    assert "annual-sp500-loop-leaderboard" in text
-    assert "locked_opened: false" in text
-    assert "score_mode: train_validation_hunt_100" in config
-    assert "max_features: 8" in config
+    for path in forbidden_paths:
+        assert not Path(path).exists()
+
+
+def test_annual_validation_optimization_score_modes_are_not_runnable() -> None:
+    script = Path("scripts/run_annual_beam_search.py").read_text(encoding="utf-8")
+
+    assert "FORBIDDEN_VALIDATION_OPTIMIZATION_SCORE_MODES" in script
+    assert "train_validation_100" in script
+    assert "train_validation_hunt_100" in script
+    assert "validation cannot be used as an optimization target" in script
 
 
 def test_heavy_workflows_do_not_run_on_push() -> None:

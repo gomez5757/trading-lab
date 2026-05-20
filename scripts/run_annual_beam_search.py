@@ -15,6 +15,14 @@ from trading_lab.config import load_yaml  # noqa: E402
 from trading_lab.data_loader import load_market_data  # noqa: E402
 
 
+FORBIDDEN_VALIDATION_OPTIMIZATION_SCORE_MODES = frozenset(
+    {
+        "train_validation_100",
+        "train_validation_hunt_100",
+    }
+)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run one annual SP500 Beam prediction stage.")
     parser.add_argument("--config", default="configs/annual_sp500_beam.yaml")
@@ -46,6 +54,11 @@ def main() -> int:
             end_year=int(raw_config.get("end_year", 2025)),
         )
         examples_count = len(examples)
+        score_mode = str(args.score_mode or raw_config.get("score_mode", "validation"))
+        if score_mode in FORBIDDEN_VALIDATION_OPTIMIZATION_SCORE_MODES:
+            raise SystemExit(
+                f"score_mode {score_mode!r} is forbidden: validation cannot be used as an optimization target"
+            )
         config = AnnualBeamConfig(
             stage=args.stage,
             total_stages=args.total_stages,
@@ -54,7 +67,7 @@ def main() -> int:
             generations=args.generations,
             mutations_per_parent=args.mutations_per_parent,
             max_features=int(args.max_features or raw_config.get("max_features", 4)),
-            score_mode=str(args.score_mode or raw_config.get("score_mode", "validation")),
+            score_mode=score_mode,
             excluded_feature_terms=tuple(args.exclude_feature_contains or raw_config.get("excluded_feature_terms", []) or []),
             random_seed=int(args.random_seed or raw_config.get("random_seed", 173_000)),
         )

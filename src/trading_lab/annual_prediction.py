@@ -189,14 +189,6 @@ def score_annual_candidate(
         if field == "rejection_reason":
             return _train_only_100_rejection_reason(row)
         return _train_only_100_score(row)
-    if score_mode == "train_validation_100":
-        if field == "rejection_reason":
-            return _train_validation_100_rejection_reason(row)
-        return _train_only_100_score(row)
-    if score_mode == "train_validation_hunt_100":
-        if field == "rejection_reason":
-            return _train_validation_100_rejection_reason(row)
-        return _train_validation_hunt_100_score(row)
     if score_mode == "crisis_stable":
         if field == "rejection_reason":
             return _crisis_stable_rejection_reason(row)
@@ -245,37 +237,6 @@ def _train_only_100_score(row: dict[str, object]) -> float:
         + stress_bonus
         - feature_count * 8.0
         - train_mae * 10.0
-    )
-
-
-def _train_validation_hunt_100_score(row: dict[str, object]) -> float:
-    train_accuracy = float(row.get("train_accuracy", 0.0) or 0.0)
-    validation_accuracy = float(row.get("validation_accuracy", 0.0) or 0.0)
-    train_negative_hits = int(row.get("train_negative_hits", 0) or 0)
-    validation_negative_hits = int(row.get("validation_negative_hits", 0) or 0)
-    train_negative_total = int(row.get("train_negative_total", 0) or 0)
-    validation_negative_total = int(row.get("validation_negative_total", 0) or 0)
-    feature_count = int(row.get("feature_count", 1) or 1)
-    train_mae = float(row.get("train_return_mae", 1.0) or 1.0)
-    validation_mae = float(row.get("validation_return_mae", 1.0) or 1.0)
-    train_perfect_bonus = 4_000.0 if train_accuracy >= 1.0 else 0.0
-    validation_perfect_bonus = 5_500.0 if validation_accuracy >= 1.0 else 0.0
-    stress_bonus = 0.0
-    if train_negative_total and train_negative_hits == train_negative_total:
-        stress_bonus += 800.0
-    if validation_negative_total and validation_negative_hits == validation_negative_total:
-        stress_bonus += 1_200.0
-    return float(
-        train_perfect_bonus
-        + validation_perfect_bonus
-        + train_accuracy * 900.0
-        + validation_accuracy * 1_500.0
-        + train_negative_hits * 60.0
-        + validation_negative_hits * 160.0
-        + stress_bonus
-        - feature_count * 10.0
-        - train_mae * 8.0
-        - validation_mae * 12.0
     )
 
 
@@ -897,21 +858,6 @@ def _train_only_100_rejection_reason(row: dict[str, object]) -> str:
         return "misses_train_stress"
     if int(row.get("feature_count", 1) or 1) > 5:
         return "too_many_features"
-    return ""
-
-
-def _train_validation_100_rejection_reason(row: dict[str, object]) -> str:
-    train_reason = _train_only_100_rejection_reason(row)
-    if train_reason:
-        return train_reason
-    if int(row.get("validation_total", 0) or 0) < 8:
-        return "too_few_validation_years"
-    if float(row.get("validation_accuracy", 0.0) or 0.0) < 1.0:
-        return "validation_not_perfect"
-    if int(row.get("validation_negative_total", 0) or 0) and int(row.get("validation_negative_hits", 0) or 0) < int(
-        row.get("validation_negative_total", 0) or 0
-    ):
-        return "misses_validation_stress"
     return ""
 
 
