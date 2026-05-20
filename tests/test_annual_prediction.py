@@ -10,6 +10,7 @@ from trading_lab.annual_prediction import (
     load_annual_feature_manifest,
     evaluate_annual_candidate,
     run_annual_beam_search,
+    score_annual_candidate,
 )
 
 
@@ -136,3 +137,66 @@ def test_annual_beam_search_returns_ranked_candidates() -> None:
     assert rows[0]["annual_score"] >= rows[-1]["annual_score"]
     assert all(row["locked_opened"] is False for row in rows)
     assert all(int(row["feature_count"]) <= 4 for row in rows)
+
+
+def test_train_only_100_score_ignores_validation_metrics() -> None:
+    base = {
+        "feature_count": 2,
+        "train_hits": 24,
+        "train_total": 25,
+        "train_accuracy": 0.96,
+        "train_negative_hits": 5,
+        "train_negative_total": 6,
+        "train_return_mae": 0.10,
+    }
+    strong_validation = {
+        **base,
+        "validation_accuracy": 1.0,
+        "validation_negative_hits": 3,
+        "validation_return_mae": 0.01,
+        "always_positive_validation_accuracy": 0.72,
+    }
+    weak_validation = {
+        **base,
+        "validation_accuracy": 0.0,
+        "validation_negative_hits": 0,
+        "validation_return_mae": 0.99,
+        "always_positive_validation_accuracy": 0.72,
+    }
+
+    assert score_annual_candidate(strong_validation, score_mode="train_only_100") == score_annual_candidate(
+        weak_validation,
+        score_mode="train_only_100",
+    )
+
+
+def test_train_only_100_acceptance_requires_perfect_train_only() -> None:
+    validation_perfect_train_miss = {
+        "feature_count": 2,
+        "train_hits": 24,
+        "train_total": 25,
+        "train_accuracy": 0.96,
+        "train_negative_hits": 6,
+        "train_negative_total": 6,
+        "validation_total": 11,
+        "validation_accuracy": 1.0,
+    }
+    train_perfect_validation_bad = {
+        "feature_count": 2,
+        "train_hits": 25,
+        "train_total": 25,
+        "train_accuracy": 1.0,
+        "train_negative_hits": 6,
+        "train_negative_total": 6,
+        "validation_total": 11,
+        "validation_accuracy": 0.0,
+    }
+
+    assert (
+        score_annual_candidate(validation_perfect_train_miss, score_mode="train_only_100", field="rejection_reason")
+        == "train_not_perfect"
+    )
+    assert (
+        score_annual_candidate(train_perfect_validation_bad, score_mode="train_only_100", field="rejection_reason")
+        == ""
+    )

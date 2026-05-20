@@ -33,6 +33,7 @@ class AnnualBeamConfig:
     mutations_per_parent: int = 10
     max_features: int = 4
     random_seed: int = 173_000
+    score_mode: str = "validation"
 
 
 def build_annual_examples(
@@ -84,6 +85,8 @@ def load_annual_feature_manifest(path: str | Path = MANIFEST_PATH) -> pd.DataFra
 def evaluate_annual_candidate(
     examples: pd.DataFrame,
     candidate: AnnualCandidate,
+    *,
+    score_mode: str = "validation",
 ) -> dict[str, object]:
     predictions = _predict_positive(examples, candidate)
     train_mask = examples["target_year"].astype(int) <= TRAIN_END_YEAR
@@ -125,9 +128,10 @@ def evaluate_annual_candidate(
         "locked_opened": False,
         "locked_hits": 0,
         "locked_total": 0,
+        "score_mode": score_mode,
     }
-    row["annual_score"] = annual_score(row)
-    row["rejection_reason"] = _rejection_reason(row)
+    row["annual_score"] = score_annual_candidate(row, score_mode=score_mode)
+    row["rejection_reason"] = score_annual_candidate(row, score_mode=score_mode, field="rejection_reason")
     row["accepted"] = row["rejection_reason"] == ""
     return row
 
@@ -164,6 +168,27 @@ def audit_annual_feature_coverage(examples: pd.DataFrame) -> pd.DataFrame:
 
 
 def annual_score(row: dict[str, object]) -> float:
+    return score_annual_candidate(row, score_mode="validation")
+
+
+def score_annual_candidate(
+    row: dict[str, object],
+    *,
+    score_mode: str = "validation",
+    field: str = "score",
+) -> float | str:
+    if score_mode == "train_only_100":
+        if field == "rejection_reason":
+            return _train_only_100_rejection_reason(row)
+        return _train_only_100_score(row)
+    if score_mode != "validation":
+        raise ValueError(f"unknown annual score mode: {score_mode}")
+    if field == "rejection_reason":
+        return _rejection_reason(row)
+    return _validation_score(row)
+
+
+def _validation_score(row: dict[str, object]) -> float:
     validation_accuracy = float(row.get("validation_accuracy", 0.0) or 0.0)
     train_accuracy = float(row.get("train_accuracy", 0.0) or 0.0)
     validation_negative_hits = int(row.get("validation_negative_hits", 0) or 0)
@@ -183,6 +208,26 @@ def annual_score(row: dict[str, object]) -> float:
     )
 
 
+def _train_only_100_score(row: dict[str, object]) -> float:
+    train_accuracy = float(row.get("train_accuracy", 0.0) or 0.0)
+    train_hits = int(row.get("train_hits", 0) or 0)
+    train_negative_hits = int(row.get("train_negative_hits", 0) or 0)
+    train_negative_total = int(row.get("train_negative_total", 0) or 0)
+    train_mae = float(row.get("train_return_mae", 1.0) or 1.0)
+    feature_count = int(row.get("feature_count", 1) or 1)
+    perfect_bonus = 5_000.0 if train_accuracy >= 1.0 else 0.0
+    stress_bonus = 250.0 if train_negative_total and train_negative_hits == train_negative_total else 0.0
+    return float(
+        perfect_bonus
+        + train_accuracy * 1_000.0
+        + train_hits * 10.0
+        + train_negative_hits * 35.0
+        + stress_bonus
+        - feature_count * 8.0
+        - train_mae * 10.0
+    )
+
+
 def run_annual_beam_search(
     examples: pd.DataFrame,
     config: AnnualBeamConfig,
@@ -194,7 +239,7 @@ def run_annual_beam_search(
     rows: list[dict[str, object]] = []
     seen: set[tuple[tuple[str, ...], int]] = set()
     seeds = _seed_candidates(catalog, config=config, rng=rng)
-    seed_rows = _evaluate_unique(examples, seeds, seen=seen)
+    seed_rows = _evaluate_unique(examples, seeds, seen=seen, score_mode=config.score_mode)
     rows.extend(seed_rows)
     beam = _select_beam(seed_rows, config.beam_width)
     for _ in range(config.generations):
@@ -203,7 +248,7 @@ def run_annual_beam_search(
             candidate = _candidate_from_row(parent)
             for _ in range(config.mutations_per_parent):
                 children.append(_mutate_candidate(candidate, catalog, config=config, rng=rng))
-        child_rows = _evaluate_unique(examples, children, seen=seen)
+        child_rows = _evaluate_unique(examples, children, seen=seen, score_mode=config.score_mode)
         rows.extend(child_rows)
         beam = _select_beam([*beam, *child_rows], config.beam_width)
     return sorted(rows, key=lambda row: float(row["annual_score"]), reverse=True)
@@ -587,6 +632,7 @@ def _evaluate_unique(
     candidates: Iterable[AnnualCandidate],
     *,
     seen: set[tuple[tuple[str, ...], int]],
+    score_mode: str = "validation",
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for candidate in candidates:
@@ -595,7 +641,7 @@ def _evaluate_unique(
         if key in seen or not clean.specs:
             continue
         seen.add(key)
-        rows.append(evaluate_annual_candidate(examples, clean))
+        rows.append(evaluate_annual_candidate(examples, clean, score_mode=score_mode))
     return rows
 
 
@@ -712,6 +758,20 @@ def _rejection_reason(row: dict[str, object]) -> str:
     if int(row["validation_negative_total"]) and int(row["validation_negative_hits"]) < 1:
         return "misses_validation_stress"
     if int(row["feature_count"]) > 4:
+        return "too_many_features"
+    return ""
+
+
+def _train_only_100_rejection_reason(row: dict[str, object]) -> str:
+    if int(row.get("train_total", 0) or 0) < 20:
+        return "too_few_train_years"
+    if float(row.get("train_accuracy", 0.0) or 0.0) < 1.0:
+        return "train_not_perfect"
+    if int(row.get("train_negative_total", 0) or 0) and int(row.get("train_negative_hits", 0) or 0) < int(
+        row.get("train_negative_total", 0) or 0
+    ):
+        return "misses_train_stress"
+    if int(row.get("feature_count", 1) or 1) > 5:
         return "too_many_features"
     return ""
 

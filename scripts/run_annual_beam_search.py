@@ -24,6 +24,8 @@ def main() -> int:
     parser.add_argument("--beam-width", type=int, default=32)
     parser.add_argument("--generations", type=int, default=6)
     parser.add_argument("--mutations-per-parent", type=int, default=12)
+    parser.add_argument("--max-features", type=int, default=None)
+    parser.add_argument("--score-mode", default=None)
     args = parser.parse_args()
 
     output_dir = Path("outputs/annual_sp500_beam")
@@ -46,6 +48,8 @@ def main() -> int:
             beam_width=args.beam_width,
             generations=args.generations,
             mutations_per_parent=args.mutations_per_parent,
+            max_features=int(args.max_features or raw_config.get("max_features", 4)),
+            score_mode=str(args.score_mode or raw_config.get("score_mode", "validation")),
         )
         rows = run_annual_beam_search(examples, config)
     except Exception as exc:
@@ -72,6 +76,7 @@ def main() -> int:
                 "accepted": int(sum(bool(row.get("accepted")) for row in rows)),
                 "stage_failed": any(bool(row.get("stage_failed")) for row in rows),
                 "best_accuracy_validation": max((float(row.get("validation_accuracy", 0.0) or 0.0) for row in rows), default=0.0),
+                "best_accuracy_train": max((float(row.get("train_accuracy", 0.0) or 0.0) for row in rows), default=0.0),
                 "output_path": str(output_path),
                 "locked_opened": False,
             },

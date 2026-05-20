@@ -178,6 +178,19 @@ def test_annual_sp500_beam_workflow_is_manual_and_keeps_locked_closed() -> None:
     assert "locked_opened: false" in text
 
 
+def test_annual_sp500_train_only_100_workflow_optimizes_train_only() -> None:
+    text = Path(".github/workflows/annual-sp500-train-only-100.yml").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch" in text
+    assert "push:" not in text
+    assert "configs/annual_sp500_train_only_100.yaml" in text
+    assert "--score-mode train_only_100" in text
+    assert "--max-features 5" in text
+    assert "--total-stages 64" in text
+    assert "annual-sp500-train-only-100-leaderboard" in text
+    assert "locked_opened: false" in text
+
+
 def test_heavy_workflows_do_not_run_on_push() -> None:
     for path in (
         ".github/workflows/annual-sp500-beam.yml",
