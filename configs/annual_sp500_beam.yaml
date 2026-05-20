@@ -1,0 +1,4 @@
+data_path: data/public/sp500_annual_daily.csv
+output_dir: outputs/annual_sp500_beam
+start_year: 1980
+end_year: 2025

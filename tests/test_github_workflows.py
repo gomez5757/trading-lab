@@ -161,6 +161,19 @@ def test_survival_spy_only_marathon_runs_five_methods_for_nine_hours() -> None:
     assert "CASH" not in text
 
 
+def test_annual_sp500_beam_workflow_is_manual_and_keeps_locked_closed() -> None:
+    text = Path(".github/workflows/annual-sp500-beam.yml").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch" in text
+    assert "push:" not in text
+    assert "scripts/download_annual_public_data.py" in text
+    assert "scripts/run_annual_beam_search.py" in text
+    assert "scripts/merge_annual_beam_leaderboards.py" in text
+    assert "--total-stages 64" in text
+    assert "annual-sp500-beam-leaderboard" in text
+    assert "locked_opened: false" in text
+
+
 def test_codespaces_devcontainer_uses_existing_python_image() -> None:
     text = Path(".devcontainer/devcontainer.json").read_text(encoding="utf-8")
 
