@@ -171,6 +171,8 @@ def test_annual_sp500_beam_workflow_is_manual_and_keeps_locked_closed() -> None:
     assert "scripts/run_annual_beam_search.py" in text
     assert "scripts/merge_annual_beam_leaderboards.py" in text
     assert "--total-stages 64" in text
+    assert "timeout-minutes: 60" in text
+    assert "if: always()" in text
     assert "annual_feature_coverage.csv" in text
     assert "annual-sp500-beam-leaderboard" in text
     assert "locked_opened: false" in text

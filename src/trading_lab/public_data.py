@@ -371,7 +371,7 @@ def _add_fred_features(out: dict[str, pd.Series], index: pd.DatetimeIndex) -> No
 def _download_fred_series(series_id: str) -> pd.Series:
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
     request = Request(url, headers={"User-Agent": "trading-lab-public-features"})
-    with urlopen(request, timeout=20) as response:
+    with urlopen(request, timeout=8) as response:
         raw = response.read()
     df = pd.read_csv(io.BytesIO(raw))
     if "observation_date" not in df.columns or series_id not in df.columns:

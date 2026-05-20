@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import sys
 from pathlib import Path
 
@@ -7,7 +8,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from download_annual_public_data import build_annual_public_data  # noqa: E402
+from download_annual_public_data import build_annual_public_data, _download_shiller_valuation_data  # noqa: E402
 
 
 def test_build_annual_public_data_adds_valuation_features(monkeypatch, tmp_path: Path) -> None:
@@ -47,3 +48,21 @@ def test_build_annual_public_data_adds_valuation_features(monkeypatch, tmp_path:
     assert "earnings_yield" in written.columns
     assert "dividend_yield" in written.columns
     assert written["cape"].notna().any()
+
+
+def test_download_shiller_valuation_data_keeps_values_after_date_indexing(monkeypatch) -> None:
+    payload = "\n".join(
+        [
+            "date_string,sp500,dividend,earnings,cape",
+            "1980-01-01,100,4,8,10",
+            "1980-02-01,110,4.4,8.8,11",
+        ]
+    ).encode("utf-8")
+
+    monkeypatch.setattr("download_annual_public_data.urlopen", lambda *_args, **_kwargs: io.BytesIO(payload))
+
+    data = _download_shiller_valuation_data()
+
+    assert data["cape"].tolist() == [10.0, 11.0]
+    assert data["earnings_yield"].tolist() == [0.08, 0.08]
+    assert data["dividend_yield"].tolist() == [0.04, 0.04]

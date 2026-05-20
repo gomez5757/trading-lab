@@ -43,6 +43,12 @@ def test_build_annual_examples_uses_previous_year_close_only() -> None:
     assert examples["decision_date"].dt.year.tolist() == [1980, 1981, 1982]
     assert "spy_return_next_year" in examples.columns
     assert examples["target_positive"].dtype == bool
+    expected_1981 = (
+        data.loc[data.index.year == 1981, "close"].iloc[-1]
+        / data.loc[data.index.year == 1980, "close"].iloc[-1]
+        - 1.0
+    )
+    assert examples.loc[examples["target_year"] == 1981, "spy_return_next_year"].iloc[0] == expected_1981
 
 
 def test_build_annual_examples_adds_political_and_valuation_features() -> None:

@@ -20,6 +20,8 @@ def main() -> int:
     frames = [pd.read_csv(path) for path in paths if path.stat().st_size > 0]
     leaderboard = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     if not leaderboard.empty:
+        if "annual_score" not in leaderboard:
+            leaderboard["annual_score"] = -1_000_000.0
         leaderboard = leaderboard.sort_values("annual_score", ascending=False)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -29,6 +31,7 @@ def main() -> int:
         "rows": int(len(leaderboard)),
         "candidates_evaluated": int(len(leaderboard)),
         "accepted": int(leaderboard["accepted"].fillna(False).astype(bool).sum()) if "accepted" in leaderboard else 0,
+        "stage_failures": int(leaderboard["stage_failed"].fillna(False).astype(bool).sum()) if "stage_failed" in leaderboard else 0,
         "best": _json_clean(best),
         "locked_opened": False,
     }

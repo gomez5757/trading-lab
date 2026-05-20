@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -100,22 +101,14 @@ def build_annual_public_data(output: str | Path) -> Path:
         },
         index=base.index,
     )
-    for name, symbol in YAHOO_FEATURE_SYMBOLS.items():
-        try:
-            asset = download_yahoo_chart(symbol)
-        except Exception:
-            continue
+    for name, asset in _download_optional_yahoo_features().items():
         asset["timestamp_dt"] = pd.to_datetime(asset["timestamp"])
         aligned = asset.set_index("timestamp_dt").reindex(panel.index).ffill()
         series = aligned["close"].astype(float)
         panel[f"{name}_level"] = series
         panel[f"{name}_ret_12m"] = series.pct_change(252)
         panel[f"sp500_vs_{name}_ret_12m"] = close.pct_change(252) - series.pct_change(252)
-    for name, series_id in FRED_ANNUAL_SERIES.items():
-        try:
-            series = _download_fred_series(series_id).shift(5, freq="B")
-        except Exception:
-            continue
+    for name, series in _download_optional_fred_series().items():
         panel[name] = series.reindex(panel.index).ffill()
     try:
         valuation = _download_shiller_valuation_data().shift(5, freq="B")
@@ -138,6 +131,35 @@ def build_annual_public_data(output: str | Path) -> Path:
     return write_public_data(panel, output)
 
 
+def _download_optional_yahoo_features() -> dict[str, pd.DataFrame]:
+    output: dict[str, pd.DataFrame] = {}
+    with ThreadPoolExecutor(max_workers=min(4, len(YAHOO_FEATURE_SYMBOLS))) as executor:
+        futures = {executor.submit(download_yahoo_chart, symbol): name for name, symbol in YAHOO_FEATURE_SYMBOLS.items()}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                output[name] = future.result()
+            except Exception:
+                continue
+    return output
+
+
+def _download_optional_fred_series() -> dict[str, pd.Series]:
+    output: dict[str, pd.Series] = {}
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {
+            executor.submit(_download_fred_series, series_id): name
+            for name, series_id in FRED_ANNUAL_SERIES.items()
+        }
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                output[name] = future.result().shift(5, freq="B")
+            except Exception:
+                continue
+    return output
+
+
 def _download_shiller_valuation_data() -> pd.DataFrame:
     request = Request(SHILLER_STOCK_MARKET_CSV_URL, headers={"User-Agent": "trading-lab-annual-valuation"})
     with urlopen(request, timeout=30) as response:
@@ -148,17 +170,17 @@ def _download_shiller_valuation_data() -> pd.DataFrame:
     index = pd.to_datetime(raw[date_column], errors="coerce")
     frame = pd.DataFrame(index=index)
     if "cape" in raw:
-        frame["cape"] = pd.to_numeric(raw["cape"], errors="coerce")
+        frame["cape"] = pd.to_numeric(raw["cape"], errors="coerce").to_numpy(dtype=float)
     if {"earnings", "sp500"}.issubset(raw.columns):
         earnings = pd.to_numeric(raw["earnings"], errors="coerce")
         price = pd.to_numeric(raw["sp500"], errors="coerce")
-        frame["earnings_yield"] = earnings / price
-        frame["pe_ttm"] = price / earnings.replace(0, pd.NA)
-        frame["eps_ttm"] = earnings
+        frame["earnings_yield"] = (earnings / price).to_numpy(dtype=float)
+        frame["pe_ttm"] = (price / earnings.replace(0, pd.NA)).to_numpy(dtype=float)
+        frame["eps_ttm"] = earnings.to_numpy(dtype=float)
     if {"dividend", "sp500"}.issubset(raw.columns):
         dividend = pd.to_numeric(raw["dividend"], errors="coerce")
         price = pd.to_numeric(raw["sp500"], errors="coerce")
-        frame["dividend_yield"] = dividend / price
+        frame["dividend_yield"] = (dividend / price).to_numpy(dtype=float)
     return frame.replace([float("inf"), float("-inf")], pd.NA).dropna(how="all").sort_index()
 
 

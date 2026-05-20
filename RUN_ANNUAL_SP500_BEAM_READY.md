@@ -2,6 +2,8 @@
 
 Estado: preparado, no ejecutado.
 
+Revision final: hecha. El flujo se ha probado en local sin ejecutar el run completo.
+
 Workflow:
 
 https://github.com/gomez5757/trading-lab/actions/workflows/annual-sp500-beam.yml
@@ -20,6 +22,8 @@ Configuracion:
 - Por stage: seed pool 500, beam width 32, generations 6, mutations per parent 12
 - Locked: cerrado
 - Trading: solo prediccion anual del SP500, no reutiliza senales diarias
+- Merge final: se intenta aunque una etapa aislada falle
+- Fuentes lentas: las fuentes externas opcionales tienen timeout corto para no bloquear el run
 
 Artifacts esperados:
 
@@ -42,6 +46,8 @@ Reglas importantes:
 - Las features sin fuente publica fiable no se inventan.
 - El audit separa features buenas, proxy, parciales y sin datos.
 - El Beam solo usa features con datos suficientes en train.
+- En prueba local, FRED no respondio. El run siguio con Yahoo/Shiller y dejo 26 features usables.
+- En GitHub puede haber mas features usables si FRED responde alli.
 
 Como arrancarlo manualmente:
 
@@ -49,4 +55,3 @@ Como arrancarlo manualmente:
 2. Pulsar `Run workflow`.
 3. Dejar `configs/annual_sp500_beam.yaml`.
 4. Pulsar el boton verde.
-

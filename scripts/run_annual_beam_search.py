@@ -26,24 +26,40 @@ def main() -> int:
     parser.add_argument("--mutations-per-parent", type=int, default=12)
     args = parser.parse_args()
 
-    raw_config = load_yaml(args.config)
-    data_path = raw_config.get("data_path", "data/public/sp500_annual_daily.csv")
-    output_dir = Path(raw_config.get("output_dir", "outputs/annual_sp500_beam"))
-    daily = load_market_data(data_path)
-    examples = build_annual_examples(
-        daily,
-        start_year=int(raw_config.get("start_year", 1980)),
-        end_year=int(raw_config.get("end_year", 2025)),
-    )
-    config = AnnualBeamConfig(
-        stage=args.stage,
-        total_stages=args.total_stages,
-        seed_pool=args.seed_pool,
-        beam_width=args.beam_width,
-        generations=args.generations,
-        mutations_per_parent=args.mutations_per_parent,
-    )
-    rows = run_annual_beam_search(examples, config)
+    output_dir = Path("outputs/annual_sp500_beam")
+    examples_count = 0
+    try:
+        raw_config = load_yaml(args.config)
+        data_path = raw_config.get("data_path", "data/public/sp500_annual_daily.csv")
+        output_dir = Path(raw_config.get("output_dir", "outputs/annual_sp500_beam"))
+        daily = load_market_data(data_path)
+        examples = build_annual_examples(
+            daily,
+            start_year=int(raw_config.get("start_year", 1980)),
+            end_year=int(raw_config.get("end_year", 2025)),
+        )
+        examples_count = len(examples)
+        config = AnnualBeamConfig(
+            stage=args.stage,
+            total_stages=args.total_stages,
+            seed_pool=args.seed_pool,
+            beam_width=args.beam_width,
+            generations=args.generations,
+            mutations_per_parent=args.mutations_per_parent,
+        )
+        rows = run_annual_beam_search(examples, config)
+    except Exception as exc:
+        rows = [
+            {
+                "candidate_id": f"annual_beam_stage_error_{args.stage}",
+                "stage": args.stage,
+                "stage_failed": True,
+                "stage_error": str(exc),
+                "annual_score": -1_000_000.0,
+                "accepted": False,
+                "locked_opened": False,
+            }
+        ]
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"annual_sp500_beam_stage_{args.stage}.csv"
     pd.DataFrame(rows).to_csv(output_path, index=False)
@@ -52,11 +68,10 @@ def main() -> int:
             {
                 "stage": args.stage,
                 "rows": len(rows),
-                "examples": len(examples),
-                "start_year": int(examples["target_year"].min()) if not examples.empty else None,
-                "end_year": int(examples["target_year"].max()) if not examples.empty else None,
+                "examples": examples_count,
                 "accepted": int(sum(bool(row.get("accepted")) for row in rows)),
-                "best_accuracy_validation": max((float(row.get("validation_accuracy", 0.0)) for row in rows), default=0.0),
+                "stage_failed": any(bool(row.get("stage_failed")) for row in rows),
+                "best_accuracy_validation": max((float(row.get("validation_accuracy", 0.0) or 0.0) for row in rows), default=0.0),
                 "output_path": str(output_path),
                 "locked_opened": False,
             },

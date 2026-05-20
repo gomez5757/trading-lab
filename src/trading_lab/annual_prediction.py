@@ -52,7 +52,7 @@ def build_annual_examples(
             continue
         decision_date = previous_year.index[-1]
         feature_row = features.loc[decision_date]
-        spy_return = float(target["close"].iloc[-1] / target["close"].iloc[0] - 1.0)
+        spy_return = float(target["close"].iloc[-1] / previous_year["close"].iloc[-1] - 1.0)
         row: dict[str, object] = {
             "target_year": int(target_year),
             "decision_date": decision_date,
