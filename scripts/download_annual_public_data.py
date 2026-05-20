@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from urllib.request import Request, urlopen
 
 import pandas as pd
 
@@ -30,6 +31,10 @@ YAHOO_FEATURE_SYMBOLS = {
     "vix": "^VIX",
     "russell_2000": "^RUT",
 }
+
+SHILLER_STOCK_MARKET_CSV_URL = (
+    "https://posix4e.github.io/shiller_wrapper_data/data/stock_market_data.csv"
+)
 
 
 def main() -> int:
@@ -75,12 +80,41 @@ def build_annual_public_data(output: str | Path) -> Path:
         except Exception:
             continue
         panel[name] = series.reindex(panel.index).ffill()
+    try:
+        valuation = _download_shiller_valuation_data().shift(5, freq="B")
+        for column in ("cape", "earnings_yield", "dividend_yield"):
+            if column in valuation:
+                panel[column] = valuation[column].reindex(panel.index).ffill()
+    except Exception:
+        pass
     if {"hy_oas", "ig_oas"}.issubset(panel.columns):
         panel["hy_minus_ig_oas"] = panel["hy_oas"] - panel["ig_oas"]
     if {"yield_10y", "yield_2y"}.issubset(panel.columns):
         panel["yield_10y_minus_2y"] = panel["yield_10y"] - panel["yield_2y"]
     panel = panel.reset_index(drop=True)
     return write_public_data(panel, output)
+
+
+def _download_shiller_valuation_data() -> pd.DataFrame:
+    request = Request(SHILLER_STOCK_MARKET_CSV_URL, headers={"User-Agent": "trading-lab-annual-valuation"})
+    with urlopen(request, timeout=30) as response:
+        raw = pd.read_csv(response)
+    date_column = "date_string" if "date_string" in raw.columns else "date"
+    if date_column not in raw.columns:
+        raise ValueError("Shiller valuation data missing date column")
+    index = pd.to_datetime(raw[date_column], errors="coerce")
+    frame = pd.DataFrame(index=index)
+    if "cape" in raw:
+        frame["cape"] = pd.to_numeric(raw["cape"], errors="coerce")
+    if {"earnings", "sp500"}.issubset(raw.columns):
+        earnings = pd.to_numeric(raw["earnings"], errors="coerce")
+        price = pd.to_numeric(raw["sp500"], errors="coerce")
+        frame["earnings_yield"] = earnings / price
+    if {"dividend", "sp500"}.issubset(raw.columns):
+        dividend = pd.to_numeric(raw["dividend"], errors="coerce")
+        price = pd.to_numeric(raw["sp500"], errors="coerce")
+        frame["dividend_yield"] = dividend / price
+    return frame.replace([float("inf"), float("-inf")], pd.NA).dropna(how="all").sort_index()
 
 
 if __name__ == "__main__":

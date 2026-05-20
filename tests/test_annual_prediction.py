@@ -24,6 +24,9 @@ def _daily_sample() -> pd.DataFrame:
             "volume": [1000] * len(dates),
             "credit_spread": [2.0 + (value % 7) * 0.1 for value in index],
             "yield_curve": [1.0 - (value % 5) * 0.05 for value in index],
+            "cape": [15.0 + (value % 11) * 0.2 for value in index],
+            "earnings_yield": [0.06 + (value % 13) * 0.001 for value in index],
+            "dividend_yield": [0.02 + (value % 17) * 0.0005 for value in index],
         }
     )
     return data.set_index("timestamp")
@@ -38,6 +41,28 @@ def test_build_annual_examples_uses_previous_year_close_only() -> None:
     assert examples["decision_date"].dt.year.tolist() == [1980, 1981, 1982]
     assert "spy_return_next_year" in examples.columns
     assert examples["target_positive"].dtype == bool
+
+
+def test_build_annual_examples_adds_political_and_valuation_features() -> None:
+    examples = build_annual_examples(_daily_sample(), start_year=1981, end_year=1984)
+
+    expected = {
+        "presidential_cycle_year",
+        "is_election_year",
+        "is_post_election_year",
+        "president_party",
+        "house_control_party",
+        "senate_control_party",
+        "split_congress",
+        "unified_government",
+        "cape",
+        "earnings_yield",
+        "dividend_yield",
+    }
+    assert expected.issubset(examples.columns)
+    assert examples.loc[examples["target_year"] == 1984, "is_election_year"].iloc[0] == 1
+    assert examples.loc[examples["target_year"] == 1981, "is_post_election_year"].iloc[0] == 1
+    assert examples["cape"].notna().all()
 
 
 def test_annual_candidate_evaluates_train_and_validation_without_locked() -> None:

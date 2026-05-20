@@ -57,6 +57,7 @@ def build_annual_examples(
             "decision_date": decision_date,
             "spy_return_next_year": spy_return,
             "target_positive": bool(spy_return > 0.0),
+            **_political_features(target_year),
         }
         for name, value in feature_row.items():
             row[name] = float(value) if pd.notna(value) else np.nan
@@ -201,6 +202,39 @@ def _build_daily_feature_frame(data: pd.DataFrame) -> pd.DataFrame:
         std = series.rolling(756, min_periods=126).std(ddof=0).replace(0, np.nan)
         out[f"{column}_z_3y"] = (series - mean) / std
     return pd.DataFrame(out, index=data.index)
+
+
+def _political_features(target_year: int) -> dict[str, float]:
+    cycle_year = ((target_year - 1981) % 4) + 1
+    president_party = _president_party(target_year)
+    house_party = _house_party(target_year)
+    senate_party = _senate_party(target_year)
+    return {
+        "presidential_cycle_year": float(cycle_year),
+        "is_election_year": float(cycle_year == 4),
+        "is_post_election_year": float(cycle_year == 1),
+        "president_party": float(president_party),
+        "house_control_party": float(house_party),
+        "senate_control_party": float(senate_party),
+        "split_congress": float(house_party != senate_party),
+        "unified_government": float(house_party == senate_party == president_party),
+    }
+
+
+def _president_party(year: int) -> int:
+    # Republican = 1, Democrat = -1. Party for the president serving most of the target year.
+    republican_ranges = ((1981, 1992), (2001, 2008), (2017, 2020), (2025, 2028))
+    return 1 if any(start <= year <= end for start, end in republican_ranges) else -1
+
+
+def _house_party(year: int) -> int:
+    republican_ranges = ((1995, 2006), (2011, 2018), (2023, 2026))
+    return 1 if any(start <= year <= end for start, end in republican_ranges) else -1
+
+
+def _senate_party(year: int) -> int:
+    republican_ranges = ((1981, 1986), (1995, 2001), (2003, 2006), (2015, 2020), (2025, 2026))
+    return 1 if any(start <= year <= end for start, end in republican_ranges) else -1
 
 
 def _build_spec_catalog(examples: pd.DataFrame) -> list[str]:
