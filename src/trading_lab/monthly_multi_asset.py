@@ -396,27 +396,30 @@ def _select_assets(examples: pd.DataFrame, candidate: MonthlyMultiAssetCandidate
         "momentum_12m": "mom_12m",
         "low_vol_3m": "vol_3m",
     }.get(candidate.selector, "mom_6m")
-    score_frame = pd.DataFrame(index=examples.index)
+    score_columns: list[np.ndarray] = []
     for asset in assets:
         column = _asset_col(asset, score_suffix)
         values = pd.to_numeric(examples.get(column, pd.Series(index=examples.index, dtype=float)), errors="coerce")
         if candidate.selector == "low_vol_3m":
             values = -values
-        score_frame[asset] = values
-    selected: list[str] = []
-    for _, row in score_frame.iterrows():
-        valid = row.dropna()
-        selected.append(str(valid.idxmax()) if not valid.empty else "SPY")
-    return np.array(selected, dtype=object)
+        score_columns.append(values.to_numpy(dtype=float))
+    scores = np.column_stack(score_columns)
+    scores = np.where(np.isfinite(scores), scores, -np.inf)
+    all_missing = np.isneginf(scores).all(axis=1)
+    selected_index = np.argmax(scores, axis=1)
+    selected = np.array([assets[index] for index in selected_index], dtype=object)
+    selected[all_missing] = "SPY"
+    return selected
 
 
 def _selected_asset_returns(examples: pd.DataFrame, selected_assets: np.ndarray) -> np.ndarray:
     returns = np.zeros(len(examples), dtype=float)
-    for index, asset in enumerate(selected_assets):
+    for asset in pd.unique(selected_assets):
         column = _asset_col(str(asset), "return_next_month")
         if column in examples:
-            value = pd.to_numeric(pd.Series([examples.iloc[index][column]]), errors="coerce").iloc[0]
-            returns[index] = float(value) if pd.notna(value) else 0.0
+            values = pd.to_numeric(examples[column], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+            mask = selected_assets == asset
+            returns[mask] = values[mask]
     return returns
 
 
